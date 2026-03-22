@@ -1,0 +1,71 @@
+{
+  "title": "Lullaby (Wiegenlied)",
+  "composer": "Johannes Brahms",
+  "tempo": 80,
+  "time_signature": [3, 4],
+  "difficulty": "grade2",
+  "notes": [
+    {"note": "E4", "start": 0.0, "duration": 0.5},
+    {"note": "E4", "start": 0.5, "duration": 0.5},
+
+    {"note": "G4", "start": 1.0, "duration": 1.5},
+    {"note": "E4", "start": 2.5, "duration": 0.5},
+
+    {"note": "G4", "start": 3.0, "duration": 1.5},
+    {"note": "E4", "start": 4.5, "duration": 0.5},
+    {"note": "G4", "start": 5.0, "duration": 0.5},
+    {"note": "C5", "start": 5.5, "duration": 0.5},
+
+    {"note": "B4", "start": 6.0, "duration": 2.0},
+    {"note": "A4", "start": 8.0, "duration": 1.0},
+
+    {"note": "D4", "start": 9.0, "duration": 0.5},
+    {"note": "D4", "start": 9.5, "duration": 0.5},
+    {"note": "F4", "start": 10.0, "duration": 1.5},
+    {"note": "D4", "start": 11.5, "duration": 0.5},
+
+    {"note": "F4", "start": 12.0, "duration": 1.5},
+    {"note": "D4", "start": 13.5, "duration": 0.5},
+    {"note": "F4", "start": 14.0, "duration": 0.5},
+    {"note": "B4", "start": 14.5, "duration": 0.5},
+
+    {"note": "A4", "start": 15.0, "duration": 2.0},
+    {"note": "E4", "start": 17.0, "duration": 0.5},
+    {"note": "E4", "start": 17.5, "duration": 0.5},
+
+    {"note": "G4", "start": 18.0, "duration": 1.0},
+    {"note": "F4", "start": 19.0, "duration": 1.0},
+    {"note": "E4", "start": 20.0, "duration": 1.0},
+
+    {"note": "A4", "start": 21.0, "duration": 1.0},
+    {"note": "G4", "start": 22.0, "duration": 1.0},
+    {"note": "F4", "start": 23.0, "duration": 1.0},
+
+    {"note": "E4", "start": 24.0, "duration": 1.0},
+    {"note": "G4", "start": 25.0, "duration": 1.0},
+    {"note": "C4", "start": 26.0, "duration": 1.0},
+
+    {"note": "E4", "start": 27.0, "duration": 1.5},
+    {"note": "D4", "start": 28.5, "duration": 0.5},
+
+    {"note": "C4", "start": 29.0, "duration": 3.0},
+
+    {"note": "E4", "start": 32.0, "duration": 1.0},
+    {"note": "G4", "start": 33.0, "duration": 1.0},
+    {"note": "F4", "start": 34.0, "duration": 1.0},
+    {"note": "E4", "start": 35.0, "duration": 1.0},
+
+    {"note": "A4", "start": 36.0, "duration": 1.0},
+    {"note": "G4", "start": 37.0, "duration": 1.0},
+    {"note": "F4", "start": 38.0, "duration": 1.0},
+
+    {"note": "E4", "start": 39.0, "duration": 1.0},
+    {"note": "G4", "start": 40.0, "duration": 1.0},
+    {"note": "C4", "start": 41.0, "duration": 1.0},
+
+    {"note": "E4", "start": 42.0, "duration": 1.5},
+    {"note": "D4", "start": 43.5, "duration": 0.5},
+
+    {"note": "C4", "start": 44.0, "duration": 3.0}
+  ]
+}

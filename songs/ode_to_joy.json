@@ -1,0 +1,46 @@
+{
+  "title": "Ode to Joy",
+  "composer": "Ludwig van Beethoven",
+  "tempo": 108,
+  "time_signature": [4, 4],
+  "difficulty": "grade2",
+  "notes": [
+    {"note": "E4", "start": 0.0, "duration": 1.0},
+    {"note": "E4", "start": 1.0, "duration": 1.0},
+    {"note": "F4", "start": 2.0, "duration": 1.0},
+    {"note": "G4", "start": 3.0, "duration": 1.0},
+
+    {"note": "G4", "start": 4.0, "duration": 1.0},
+    {"note": "F4", "start": 5.0, "duration": 1.0},
+    {"note": "E4", "start": 6.0, "duration": 1.0},
+    {"note": "D4", "start": 7.0, "duration": 1.0},
+
+    {"note": "C4", "start": 8.0, "duration": 1.0},
+    {"note": "C4", "start": 9.0, "duration": 1.0},
+    {"note": "D4", "start": 10.0, "duration": 1.0},
+    {"note": "E4", "start": 11.0, "duration": 1.0},
+
+    {"note": "E4", "start": 12.0, "duration": 1.5},
+    {"note": "D4", "start": 13.5, "duration": 0.5},
+    {"note": "D4", "start": 14.0, "duration": 2.0},
+
+    {"note": "E4", "start": 16.0, "duration": 1.0},
+    {"note": "E4", "start": 17.0, "duration": 1.0},
+    {"note": "F4", "start": 18.0, "duration": 1.0},
+    {"note": "G4", "start": 19.0, "duration": 1.0},
+
+    {"note": "G4", "start": 20.0, "duration": 1.0},
+    {"note": "F4", "start": 21.0, "duration": 1.0},
+    {"note": "E4", "start": 22.0, "duration": 1.0},
+    {"note": "D4", "start": 23.0, "duration": 1.0},
+
+    {"note": "C4", "start": 24.0, "duration": 1.0},
+    {"note": "C4", "start": 25.0, "duration": 1.0},
+    {"note": "D4", "start": 26.0, "duration": 1.0},
+    {"note": "E4", "start": 27.0, "duration": 1.0},
+
+    {"note": "D4", "start": 28.0, "duration": 1.5},
+    {"note": "C4", "start": 29.5, "duration": 0.5},
+    {"note": "C4", "start": 30.0, "duration": 2.0}
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "title": "Moonlight Sonata (1st Movement)",
+  "composer": "Ludwig van Beethoven",
+  "tempo": 56,
+  "time_signature": [4, 4],
+  "difficulty": "grade3",
+  "notes": [
+    {"note": "G#4", "start": 0.0, "duration": 2.0},
+    {"note": "A4", "start": 2.0, "duration": 1.0},
+    {"note": "G#4", "start": 3.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 4.0, "duration": 2.0},
+    {"note": "F#4", "start": 6.0, "duration": 1.0},
+    {"note": "G#4", "start": 7.0, "duration": 1.0},
+
+    {"note": "A4", "start": 8.0, "duration": 2.0},
+    {"note": "G#4", "start": 10.0, "duration": 1.0},
+    {"note": "A4", "start": 11.0, "duration": 1.0},
+
+    {"note": "B4", "start": 12.0, "duration": 4.0},
+
+    {"note": "G#4", "start": 16.0, "duration": 2.0},
+    {"note": "A4", "start": 18.0, "duration": 1.0},
+    {"note": "G#4", "start": 19.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 20.0, "duration": 2.0},
+    {"note": "F#4", "start": 22.0, "duration": 1.0},
+    {"note": "G#4", "start": 23.0, "duration": 1.0},
+
+    {"note": "A4", "start": 24.0, "duration": 2.0},
+    {"note": "B4", "start": 26.0, "duration": 1.0},
+    {"note": "A4", "start": 27.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 28.0, "duration": 4.0},
+
+    {"note": "C#5", "start": 32.0, "duration": 2.0},
+    {"note": "D5", "start": 34.0, "duration": 1.0},
+    {"note": "C#5", "start": 35.0, "duration": 1.0},
+
+    {"note": "B4", "start": 36.0, "duration": 2.0},
+    {"note": "A4", "start": 38.0, "duration": 1.0},
+    {"note": "B4", "start": 39.0, "duration": 1.0},
+
+    {"note": "C#5", "start": 40.0, "duration": 2.0},
+    {"note": "B4", "start": 42.0, "duration": 1.0},
+    {"note": "A4", "start": 43.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 44.0, "duration": 2.0},
+    {"note": "F#4", "start": 46.0, "duration": 1.0},
+    {"note": "E4", "start": 47.0, "duration": 1.0},
+
+    {"note": "E4", "start": 48.0, "duration": 4.0}
+  ]
+}

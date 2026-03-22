@@ -1,0 +1,96 @@
+{
+  "title": "Fur Elise (With Chords)",
+  "composer": "Ludwig van Beethoven",
+  "tempo": 120,
+  "time_signature": [3, 8],
+  "difficulty": "grade3",
+  "category": "Classical",
+  "notes": [
+    {"note": "E5", "start": 0.0, "duration": 0.5},
+    {"note": "D#5", "start": 0.5, "duration": 0.5},
+
+    {"note": "E5", "start": 1.0, "duration": 0.5},
+    {"note": "D#5", "start": 1.5, "duration": 0.5},
+    {"note": "E5", "start": 2.0, "duration": 0.5},
+
+    {"note": "E3", "start": 2.5, "duration": 1.5},
+    {"note": "G#3", "start": 2.5, "duration": 1.5},
+    {"note": "B3", "start": 2.5, "duration": 1.5},
+    {"note": "B4", "start": 2.5, "duration": 0.5},
+    {"note": "D5", "start": 3.0, "duration": 0.5},
+    {"note": "C5", "start": 3.5, "duration": 0.5},
+
+    {"note": "A3", "start": 4.0, "duration": 1.5},
+    {"note": "C3", "start": 4.0, "duration": 1.5},
+    {"note": "E3", "start": 4.0, "duration": 1.5},
+    {"note": "A4", "start": 4.0, "duration": 1.5},
+
+    {"note": "A3", "start": 5.5, "duration": 1.5},
+    {"note": "C3", "start": 5.5, "duration": 1.5},
+    {"note": "E3", "start": 5.5, "duration": 1.5},
+    {"note": "C4", "start": 5.5, "duration": 0.5},
+    {"note": "E4", "start": 6.0, "duration": 0.5},
+    {"note": "A4", "start": 6.5, "duration": 0.5},
+
+    {"note": "E3", "start": 7.0, "duration": 1.5},
+    {"note": "G#3", "start": 7.0, "duration": 1.5},
+    {"note": "B3", "start": 7.0, "duration": 1.5},
+    {"note": "B4", "start": 7.0, "duration": 1.5},
+
+    {"note": "E3", "start": 8.5, "duration": 1.5},
+    {"note": "G#3", "start": 8.5, "duration": 1.5},
+    {"note": "B3", "start": 8.5, "duration": 1.5},
+    {"note": "E4", "start": 8.5, "duration": 0.5},
+    {"note": "G#4", "start": 9.0, "duration": 0.5},
+    {"note": "B4", "start": 9.5, "duration": 0.5},
+
+    {"note": "A3", "start": 10.0, "duration": 1.5},
+    {"note": "C3", "start": 10.0, "duration": 1.5},
+    {"note": "E3", "start": 10.0, "duration": 1.5},
+    {"note": "C5", "start": 10.0, "duration": 1.5},
+
+    {"note": "E5", "start": 11.5, "duration": 0.5},
+    {"note": "E5", "start": 12.0, "duration": 0.5},
+    {"note": "D#5", "start": 12.5, "duration": 0.5},
+
+    {"note": "E5", "start": 13.0, "duration": 0.5},
+    {"note": "D#5", "start": 13.5, "duration": 0.5},
+    {"note": "E5", "start": 14.0, "duration": 0.5},
+
+    {"note": "E3", "start": 14.5, "duration": 1.5},
+    {"note": "G#3", "start": 14.5, "duration": 1.5},
+    {"note": "B3", "start": 14.5, "duration": 1.5},
+    {"note": "B4", "start": 14.5, "duration": 0.5},
+    {"note": "D5", "start": 15.0, "duration": 0.5},
+    {"note": "C5", "start": 15.5, "duration": 0.5},
+
+    {"note": "A3", "start": 16.0, "duration": 1.5},
+    {"note": "C3", "start": 16.0, "duration": 1.5},
+    {"note": "E3", "start": 16.0, "duration": 1.5},
+    {"note": "A4", "start": 16.0, "duration": 1.5},
+
+    {"note": "A3", "start": 17.5, "duration": 1.5},
+    {"note": "C3", "start": 17.5, "duration": 1.5},
+    {"note": "E3", "start": 17.5, "duration": 1.5},
+    {"note": "C4", "start": 17.5, "duration": 0.5},
+    {"note": "E4", "start": 18.0, "duration": 0.5},
+    {"note": "A4", "start": 18.5, "duration": 0.5},
+
+    {"note": "E3", "start": 19.0, "duration": 1.5},
+    {"note": "G#3", "start": 19.0, "duration": 1.5},
+    {"note": "B3", "start": 19.0, "duration": 1.5},
+    {"note": "B4", "start": 19.0, "duration": 1.5},
+
+    {"note": "A3", "start": 20.5, "duration": 1.5},
+    {"note": "C3", "start": 20.5, "duration": 1.5},
+    {"note": "E3", "start": 20.5, "duration": 1.5},
+    {"note": "E4", "start": 20.5, "duration": 0.5},
+    {"note": "C5", "start": 21.0, "duration": 0.5},
+    {"note": "B4", "start": 21.5, "duration": 0.5},
+
+    {"note": "A3", "start": 22.0, "duration": 1.5},
+    {"note": "C3", "start": 22.0, "duration": 1.5},
+    {"note": "E3", "start": 22.0, "duration": 1.5},
+    {"note": "A4", "start": 22.0, "duration": 1.5}
+  ]
+}

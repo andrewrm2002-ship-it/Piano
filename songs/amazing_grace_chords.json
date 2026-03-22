@@ -1,0 +1,108 @@
+{
+  "title": "Amazing Grace (With Chords)",
+  "composer": "Traditional / John Newton",
+  "tempo": 80,
+  "time_signature": [3, 4],
+  "difficulty": "grade3",
+  "category": "Hymn",
+  "notes": [
+    {"note": "C3", "start": 0.0, "duration": 3.0},
+    {"note": "E3", "start": 0.0, "duration": 3.0},
+    {"note": "G3", "start": 0.0, "duration": 3.0},
+    {"note": "G3", "start": 0.0, "duration": 1.0},
+
+    {"note": "C3", "start": 1.0, "duration": 5.0},
+    {"note": "E3", "start": 1.0, "duration": 5.0},
+    {"note": "G3", "start": 1.0, "duration": 5.0},
+    {"note": "C4", "start": 1.0, "duration": 2.0},
+    {"note": "E4", "start": 3.0, "duration": 0.5},
+    {"note": "C4", "start": 3.5, "duration": 0.5},
+
+    {"note": "F3", "start": 4.0, "duration": 3.0},
+    {"note": "A3", "start": 4.0, "duration": 3.0},
+    {"note": "C3", "start": 4.0, "duration": 3.0},
+    {"note": "E4", "start": 4.0, "duration": 2.0},
+    {"note": "D4", "start": 6.0, "duration": 1.0},
+
+    {"note": "C3", "start": 7.0, "duration": 3.0},
+    {"note": "E3", "start": 7.0, "duration": 3.0},
+    {"note": "G3", "start": 7.0, "duration": 3.0},
+    {"note": "C4", "start": 7.0, "duration": 2.0},
+    {"note": "A3", "start": 9.0, "duration": 1.0},
+
+    {"note": "C3", "start": 10.0, "duration": 3.0},
+    {"note": "E3", "start": 10.0, "duration": 3.0},
+    {"note": "G3", "start": 10.0, "duration": 3.0},
+    {"note": "G3", "start": 10.0, "duration": 2.0},
+    {"note": "G3", "start": 12.0, "duration": 1.0},
+
+    {"note": "C3", "start": 13.0, "duration": 3.0},
+    {"note": "E3", "start": 13.0, "duration": 3.0},
+    {"note": "G3", "start": 13.0, "duration": 3.0},
+    {"note": "C4", "start": 13.0, "duration": 2.0},
+    {"note": "E4", "start": 15.0, "duration": 0.5},
+    {"note": "C4", "start": 15.5, "duration": 0.5},
+
+    {"note": "F3", "start": 16.0, "duration": 3.0},
+    {"note": "A3", "start": 16.0, "duration": 3.0},
+    {"note": "C3", "start": 16.0, "duration": 3.0},
+    {"note": "E4", "start": 16.0, "duration": 2.0},
+    {"note": "D4", "start": 18.0, "duration": 1.0},
+
+    {"note": "C3", "start": 19.0, "duration": 3.0},
+    {"note": "E3", "start": 19.0, "duration": 3.0},
+    {"note": "G3", "start": 19.0, "duration": 3.0},
+    {"note": "E4", "start": 19.0, "duration": 2.0},
+    {"note": "G4", "start": 21.0, "duration": 1.0},
+
+    {"note": "C3", "start": 22.0, "duration": 3.0},
+    {"note": "E3", "start": 22.0, "duration": 3.0},
+    {"note": "G3", "start": 22.0, "duration": 3.0},
+    {"note": "G4", "start": 22.0, "duration": 2.0},
+    {"note": "E4", "start": 24.0, "duration": 0.5},
+    {"note": "G4", "start": 24.5, "duration": 0.5},
+
+    {"note": "C3", "start": 25.0, "duration": 3.0},
+    {"note": "E3", "start": 25.0, "duration": 3.0},
+    {"note": "G3", "start": 25.0, "duration": 3.0},
+    {"note": "G4", "start": 25.0, "duration": 2.0},
+    {"note": "E4", "start": 27.0, "duration": 0.5},
+    {"note": "C4", "start": 27.5, "duration": 0.5},
+
+    {"note": "F3", "start": 28.0, "duration": 3.0},
+    {"note": "A3", "start": 28.0, "duration": 3.0},
+    {"note": "C3", "start": 28.0, "duration": 3.0},
+    {"note": "E4", "start": 28.0, "duration": 2.0},
+    {"note": "D4", "start": 30.0, "duration": 1.0},
+
+    {"note": "C3", "start": 31.0, "duration": 3.0},
+    {"note": "E3", "start": 31.0, "duration": 3.0},
+    {"note": "G3", "start": 31.0, "duration": 3.0},
+    {"note": "C4", "start": 31.0, "duration": 2.0},
+    {"note": "A3", "start": 33.0, "duration": 1.0},
+
+    {"note": "C3", "start": 34.0, "duration": 3.0},
+    {"note": "E3", "start": 34.0, "duration": 3.0},
+    {"note": "G3", "start": 34.0, "duration": 3.0},
+    {"note": "G3", "start": 34.0, "duration": 2.0},
+    {"note": "G3", "start": 36.0, "duration": 1.0},
+
+    {"note": "C3", "start": 37.0, "duration": 3.0},
+    {"note": "E3", "start": 37.0, "duration": 3.0},
+    {"note": "G3", "start": 37.0, "duration": 3.0},
+    {"note": "C4", "start": 37.0, "duration": 2.0},
+    {"note": "E4", "start": 39.0, "duration": 0.5},
+    {"note": "C4", "start": 39.5, "duration": 0.5},
+
+    {"note": "F3", "start": 40.0, "duration": 3.0},
+    {"note": "A3", "start": 40.0, "duration": 3.0},
+    {"note": "C3", "start": 40.0, "duration": 3.0},
+    {"note": "E4", "start": 40.0, "duration": 2.0},
+    {"note": "D4", "start": 42.0, "duration": 1.0},
+
+    {"note": "C3", "start": 43.0, "duration": 3.0},
+    {"note": "E3", "start": 43.0, "duration": 3.0},
+    {"note": "G3", "start": 43.0, "duration": 3.0},
+    {"note": "C4", "start": 43.0, "duration": 3.0}
+  ]
+}

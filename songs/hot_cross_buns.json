@@ -1,0 +1,29 @@
+{
+  "title": "Hot Cross Buns",
+  "composer": "Traditional",
+  "tempo": 100,
+  "time_signature": [4, 4],
+  "difficulty": "grade2",
+  "notes": [
+    {"note": "E4", "start": 0.0, "duration": 1.0},
+    {"note": "D4", "start": 1.0, "duration": 1.0},
+    {"note": "C4", "start": 2.0, "duration": 2.0},
+
+    {"note": "E4", "start": 4.0, "duration": 1.0},
+    {"note": "D4", "start": 5.0, "duration": 1.0},
+    {"note": "C4", "start": 6.0, "duration": 2.0},
+
+    {"note": "C4", "start": 8.0, "duration": 0.5},
+    {"note": "C4", "start": 8.5, "duration": 0.5},
+    {"note": "C4", "start": 9.0, "duration": 0.5},
+    {"note": "C4", "start": 9.5, "duration": 0.5},
+    {"note": "D4", "start": 10.0, "duration": 0.5},
+    {"note": "D4", "start": 10.5, "duration": 0.5},
+    {"note": "D4", "start": 11.0, "duration": 0.5},
+    {"note": "D4", "start": 11.5, "duration": 0.5},
+
+    {"note": "E4", "start": 12.0, "duration": 1.0},
+    {"note": "D4", "start": 13.0, "duration": 1.0},
+    {"note": "C4", "start": 14.0, "duration": 2.0}
+  ]
+}

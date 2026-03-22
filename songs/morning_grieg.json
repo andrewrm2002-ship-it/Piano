@@ -1,0 +1,60 @@
+{
+  "title": "Morning (Peer Gynt Suite)",
+  "composer": "Edvard Grieg",
+  "tempo": 72,
+  "time_signature": [6, 8],
+  "difficulty": "grade3",
+  "notes": [
+    {"note": "E4", "start": 0.0, "duration": 1.0},
+    {"note": "G#4", "start": 1.0, "duration": 1.0},
+    {"note": "B4", "start": 2.0, "duration": 1.0},
+
+    {"note": "E5", "start": 3.0, "duration": 2.0},
+    {"note": "D5", "start": 5.0, "duration": 1.0},
+
+    {"note": "B4", "start": 6.0, "duration": 2.0},
+    {"note": "E4", "start": 8.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 9.0, "duration": 3.0},
+
+    {"note": "E4", "start": 12.0, "duration": 1.0},
+    {"note": "G#4", "start": 13.0, "duration": 1.0},
+    {"note": "B4", "start": 14.0, "duration": 1.0},
+
+    {"note": "E5", "start": 15.0, "duration": 2.0},
+    {"note": "D5", "start": 17.0, "duration": 1.0},
+
+    {"note": "E5", "start": 18.0, "duration": 2.0},
+    {"note": "B4", "start": 20.0, "duration": 1.0},
+
+    {"note": "G#4", "start": 21.0, "duration": 3.0},
+
+    {"note": "E5", "start": 24.0, "duration": 1.0},
+    {"note": "F#5", "start": 25.0, "duration": 1.0},
+    {"note": "E5", "start": 26.0, "duration": 1.0},
+
+    {"note": "F#5", "start": 27.0, "duration": 1.0},
+    {"note": "E5", "start": 28.0, "duration": 1.0},
+    {"note": "D#5", "start": 29.0, "duration": 1.0},
+
+    {"note": "E5", "start": 30.0, "duration": 1.0},
+    {"note": "D#5", "start": 31.0, "duration": 1.0},
+    {"note": "C#5", "start": 32.0, "duration": 1.0},
+
+    {"note": "D#5", "start": 33.0, "duration": 1.0},
+    {"note": "C#5", "start": 34.0, "duration": 1.0},
+    {"note": "B4", "start": 35.0, "duration": 1.0},
+
+    {"note": "E4", "start": 36.0, "duration": 1.0},
+    {"note": "G#4", "start": 37.0, "duration": 1.0},
+    {"note": "B4", "start": 38.0, "duration": 1.0},
+
+    {"note": "E5", "start": 39.0, "duration": 2.0},
+    {"note": "D5", "start": 41.0, "duration": 1.0},
+
+    {"note": "B4", "start": 42.0, "duration": 2.0},
+    {"note": "E4", "start": 44.0, "duration": 1.0},
+
+    {"note": "E4", "start": 45.0, "duration": 3.0}
+  ]
+}
