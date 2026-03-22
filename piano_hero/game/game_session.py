@@ -65,28 +65,38 @@ class HoldState:
 class GameSession:
     """Manages an active gameplay session for one song."""
 
+    # MIDI split point: middle C and above = right hand, below = left hand
+    HAND_SPLIT = 60
+
     def __init__(self, song: Song, pitch_queue: queue.Queue,
                  calibration_offset: float = 0.0,
-                 speed_multiplier: float = 1.0):
+                 speed_multiplier: float = 1.0,
+                 hand_mode: str = "both"):
         self.song = song
         self.pitch_queue = pitch_queue
         self.calibration_offset = calibration_offset
         self.speed_multiplier = max(0.1, speed_multiplier)
+        self.hand_mode = hand_mode  # "both", "right", "left"
 
         # Deep copy notes, scaling times for speed
         self.notes: list[Note] = []
         time_scale = 1.0 / self.speed_multiplier
         for n in song.notes:
-            self.notes.append(Note(
+            note = Note(
                 note_name=n.note_name,
                 midi=n.midi,
                 start_beat=n.start_beat,
                 duration_beat=n.duration_beat,
                 start_time=n.start_time * time_scale,
                 end_time=n.end_time * time_scale,
-            ))
+            )
+            # Tag notes for auto-play based on hand_mode
+            note.auto_played = self._is_auto_play_note(note.midi)
+            self.notes.append(note)
 
-        self.score_tracker = ScoreTracker(len(self.notes))
+        # Count only active (non-auto-played) notes for scoring
+        active_count = sum(1 for n in self.notes if not n.auto_played)
+        self.score_tracker = ScoreTracker(active_count if active_count > 0 else len(self.notes))
         self.judgment_events: list[JudgmentEvent] = []
         self.wrong_note_events: list[WrongNoteEvent] = []
         self.combo_events: list[ComboEvent] = []
@@ -136,6 +146,31 @@ class GameSession:
         # Wait mode: pause song progression until next note is played
         self.wait_mode = False
         self._waiting = False  # True when waiting for player input
+
+    def _is_auto_play_note(self, midi: int) -> bool:
+        """Return True if this MIDI note should be auto-played (not scored)."""
+        if self.hand_mode == "right":
+            return midi < self.HAND_SPLIT  # Left-hand notes auto-play
+        elif self.hand_mode == "left":
+            return midi >= self.HAND_SPLIT  # Right-hand notes auto-play
+        return False  # "both" mode: nothing auto-plays
+
+    def get_auto_play_notes(self, current_time: float) -> list[int]:
+        """Return list of MIDI numbers that should auto-play right now.
+
+        Returns MIDI values for auto-played notes whose start_time falls
+        within a small window around current_time and haven't been triggered yet.
+        """
+        window = 0.05  # 50ms tolerance
+        result = []
+        for note in self.notes:
+            if not note.auto_played:
+                continue
+            if note.hit:
+                continue
+            if abs(note.start_time - current_time) <= window:
+                result.append(note.midi)
+        return result
 
     def _beat_to_time(self, beat: float) -> float:
         return (beat * self.song.beat_duration) / self.speed_multiplier
@@ -249,6 +284,8 @@ class GameSession:
         for i, note in enumerate(self.notes):
             if note.hit:
                 continue
+            if note.auto_played:
+                continue  # Skip auto-played notes from matching
             diff = detect_time - note.start_time
             ok_win = self._ok_window_for_note(i)
             if abs(diff) > ok_win:
@@ -368,9 +405,9 @@ class GameSession:
         return min(1.0, elapsed / hold.expected_duration)
 
     def _find_next_unhit(self) -> Note | None:
-        """Return the next unhit note in sequence, or None."""
+        """Return the next unhit, non-auto-played note in sequence, or None."""
         for note in self.notes:
-            if not note.hit:
+            if not note.hit and not note.auto_played:
                 return note
         return None
 
@@ -399,6 +436,17 @@ class GameSession:
             if note.hit:
                 self._next_miss_check = i + 1
                 continue
+
+            # Auto-played notes: silently mark as hit at the correct time
+            if note.auto_played:
+                if self.current_time >= note.start_time:
+                    note.hit = True
+                    note.judgment = "auto"
+                    self._next_miss_check = i + 1
+                    continue
+                else:
+                    break
+
             ok_win = self._ok_window_for_note(i)
             if self.current_time > note.start_time + ok_win:
                 note.hit = True

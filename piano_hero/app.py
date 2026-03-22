@@ -25,6 +25,13 @@ from piano_hero.ui.hud import HUD
 from piano_hero.ui.effects import EffectsManager
 from piano_hero.input.keyboard_input import KeyboardNoteInput
 from piano_hero.input.midi_input import MidiInput
+from piano_hero.ui.sheet_music import SheetMusicOverlay
+from piano_hero.ui.themes import ThemeManager
+from piano_hero.game.ghost import GhostRecorder, GhostPlayback
+from piano_hero.audio.preview import SongPreviewer
+from piano_hero.game.leaderboard import Leaderboard
+from piano_hero.game.career import CareerManager
+from piano_hero.game.events import EventManager
 
 # States
 STATE_MENU = "menu"
@@ -35,6 +42,10 @@ STATE_RESULTS = "results"
 STATE_STATS = "stats"
 STATE_CALIBRATE = "calibrate"
 STATE_CONFIRM_QUIT = "confirm_quit"
+STATE_CAREER = "career"
+STATE_CURRICULUM = "curriculum"
+STATE_LEADERBOARD = "leaderboard"
+STATE_PLAYLIST = "playlist"
 
 
 class App:
@@ -85,6 +96,26 @@ class App:
         self._practice_mode = False
         self._practice_speed = 1.0
 
+        # Sheet music overlay
+        self.sheet_music = None
+
+        # Ghost notes
+        self.ghost_recorder = None
+        self.ghost_playback = None
+
+        # Theme system
+        self.theme_manager = ThemeManager()
+
+        # Song preview
+        self.previewer = SongPreviewer()
+
+        # Leaderboard
+        self.leaderboard = Leaderboard()
+
+        # Career + Events
+        self.career = CareerManager()
+        self.event_manager = EventManager()
+
     def run(self):
         """Main entry point."""
         self.screen = init_display(self.settings.get('fullscreen', False))
@@ -97,6 +128,7 @@ class App:
         self.keyboard_display = KeyboardDisplay()
         self.hud = HUD()
         self.effects = EffectsManager()
+        self.sheet_music = SheetMusicOverlay()
 
         # Init sound effects
         self.sfx.init()
@@ -150,6 +182,7 @@ class App:
             self.audio_engine.stop()
         if self.midi_input:
             self.midi_input.stop()
+        self.previewer.stop()
         pygame.quit()
 
     def _handle_events(self):
@@ -188,6 +221,18 @@ class App:
                     devices = AudioEngine.list_input_devices()
                     self.settings_menu = SettingsMenu(self.settings, devices)
                     self.state = STATE_SETTINGS
+                elif action == "career":
+                    from piano_hero.ui.menu import CareerScreen
+                    self._career_screen = CareerScreen(self.career)
+                    self.state = STATE_CAREER
+                elif action in ("curriculum", "learn"):
+                    from piano_hero.ui.menu import CurriculumScreen
+                    self._curriculum_screen = CurriculumScreen()
+                    self.state = STATE_CURRICULUM
+                elif action == "leaderboard":
+                    from piano_hero.ui.menu import LeaderboardScreen
+                    self._leaderboard_screen = LeaderboardScreen(self.leaderboard)
+                    self.state = STATE_LEADERBOARD
                 elif action == "quit":
                     self.running = False
 
@@ -233,6 +278,41 @@ class App:
                     if action == "back":
                         self.state = STATE_MENU
 
+            elif self.state == STATE_CAREER:
+                if hasattr(self, '_career_screen') and self._career_screen:
+                    action = self._career_screen.handle_event(event)
+                    if action == "back":
+                        self.state = STATE_MENU
+                    elif isinstance(action, tuple) and action[0] == "play_career":
+                        _, venue_id, song_info = action
+                        # Load the song and start game
+                        song_file = song_info['file']
+                        for s in self.songs:
+                            if os.path.basename(s.filepath) == song_file:
+                                self._start_game(s, 1.0, song_info.get('difficulty', 'Medium'))
+                                break
+
+            elif self.state == STATE_CURRICULUM:
+                if hasattr(self, '_curriculum_screen') and self._curriculum_screen:
+                    action = self._curriculum_screen.handle_event(event)
+                    if action == "back":
+                        self.state = STATE_MENU
+                    elif isinstance(action, tuple) and action[0] == "start_lesson":
+                        lesson = action[1]
+                        # Find the song file and start with lesson settings
+                        for s in self.songs:
+                            if os.path.basename(s.filepath) == lesson.song_file:
+                                self._start_game(s, 1.0, lesson.difficulty,
+                                                 hand_mode=lesson.hand_mode)
+                                self._current_lesson = lesson
+                                break
+
+            elif self.state == STATE_LEADERBOARD:
+                if hasattr(self, '_leaderboard_screen') and self._leaderboard_screen:
+                    action = self._leaderboard_screen.handle_event(event)
+                    if action == "back":
+                        self.state = STATE_MENU
+
             elif self.state == STATE_PLAYING:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -255,6 +335,9 @@ class App:
                     elif event.key == pygame.K_SPACE:
                         if self.game_session:
                             self.game_session.activate_star_power()
+                    elif event.key == pygame.K_m:
+                        if self.sheet_music:
+                            self.sheet_music.set_visible(not self.sheet_music.visible)
                     else:
                         # Try computer keyboard note input
                         self.keyboard_input.handle_event(event)
@@ -282,7 +365,7 @@ class App:
                         speed = self._practice_speed if self._practice_mode else 1.0
                         self._start_game(song, speed)
 
-    def _start_game(self, song, speed=1.0, difficulty='Hard'):
+    def _start_game(self, song, speed=1.0, difficulty='Hard', hand_mode='both'):
         while not self.pitch_queue.empty():
             try: self.pitch_queue.get_nowait()
             except queue.Empty: break
@@ -302,7 +385,8 @@ class App:
         else:
             game_song = song
 
-        self.game_session = GameSession(game_song, self.pitch_queue, calibration, speed)
+        self.game_session = GameSession(game_song, self.pitch_queue, calibration, speed, hand_mode=hand_mode)
+        self._hand_mode = hand_mode
         # Mark star power notes
         mark_star_power_notes(self.game_session.notes)
         # Set no-fail from settings
@@ -312,6 +396,16 @@ class App:
         self.highway.setup_for_song(game_song, game_song.tempo / speed)
         self.keyboard_display.setup_for_song(game_song)
         self.effects = EffectsManager()
+
+        # Sheet music overlay
+        self.sheet_music.setup_for_song(game_song)
+        self.sheet_music.set_visible(self.settings.get('show_sheet_music', True))
+
+        # Ghost notes
+        self.ghost_recorder = GhostRecorder()
+        ghost_data = GhostRecorder.load(game_song.title)
+        self.ghost_playback = GhostPlayback(ghost_data) if ghost_data else None
+
         self._last_judgment_count = 0
         self._last_combo_count = 0
         self._last_wrong_count = 0
@@ -353,6 +447,10 @@ class App:
                     # Break streak fire if active
                     if self.game_session.score_tracker.streak == 0:
                         self.effects.set_streak_fire(False)
+
+                # Record ghost note
+                if self.ghost_recorder:
+                    self.ghost_recorder.record(ev.note.midi, self.game_session.current_time, ev.note.start_time, ev.judgment)
 
             # Process combos
             combos = self.game_session.combo_events
@@ -465,6 +563,28 @@ class App:
                 if new_achievements:
                     self.effects.spawn_celebration(SCREEN_WIDTH, SCREEN_HEIGHT)
 
+                # Save ghost recording
+                if self.ghost_recorder:
+                    self.ghost_recorder.save(self.game_session.song.title, tracker.score)
+
+                # Record to leaderboard
+                self.leaderboard.record(
+                    profile=self.settings.get('active_profile', 'Player 1'),
+                    song_title=self.game_session.song.title,
+                    score=tracker.score,
+                    stars=tracker.stars,
+                    grade=tracker.letter_grade,
+                    accuracy=tracker.percentage,
+                    streak=tracker.max_streak,
+                    difficulty=difficulty if hasattr(self, '_current_difficulty') else 'Hard'
+                )
+
+                # Check seasonal event progress
+                active_event = self.event_manager.get_active_event()
+                if active_event:
+                    song_file = os.path.basename(self.game_session.song.filepath)
+                    self.event_manager.record_song_play(active_event.id, song_file, tracker.stars)
+
                 from piano_hero.ui.menu import ResultsScreen
                 self.results_screen = ResultsScreen(
                     self.game_session.song, tracker, diff_mult)
@@ -492,7 +612,21 @@ class App:
         elif self.state == STATE_STATS and self.stats_screen:
             self.stats_screen.draw(self.screen)
 
+        elif self.state == STATE_CAREER and hasattr(self, '_career_screen'):
+            self._career_screen.draw(self.screen)
+
+        elif self.state == STATE_CURRICULUM and hasattr(self, '_curriculum_screen'):
+            self._curriculum_screen.draw(self.screen)
+
+        elif self.state == STATE_LEADERBOARD and hasattr(self, '_leaderboard_screen'):
+            self._leaderboard_screen.draw(self.screen)
+
         elif self.state in (STATE_PLAYING, STATE_CONFIRM_QUIT) and self.game_session:
+            # Apply theme colors
+            theme = self.theme_manager.get_active_theme()
+            if theme:
+                self.effects.set_performance(self.game_session.score_tracker.percentage if self.game_session.score_tracker.notes_hit > 0 else 0.5)
+
             self.screen.blit(self._bg_surface, (0, 0))
 
             show_names = self.settings.get('show_note_names', True)
@@ -502,6 +636,29 @@ class App:
                               self.game_session.notes, show_names,
                               game_session=self.game_session,
                               star_power_active=star_power)
+
+            # Sheet music overlay (top of highway area)
+            if self.sheet_music and self.sheet_music.visible:
+                hw = int(SCREEN_WIDTH * HIGHWAY_WIDTH_RATIO)
+                sheet_rect = pygame.Rect(0, 0, hw, 100)
+                current_beat = self.game_session.current_time / self.game_session.song.beat_duration
+                self.sheet_music.draw(self.screen, sheet_rect, current_beat, self.game_session.notes)
+
+            # Draw ghost notes on highway
+            if self.ghost_playback:
+                ghost_notes = self.ghost_playback.get_visible_notes(self.game_session.current_time)
+                for gn in ghost_notes:
+                    if gn.midi in self.highway.column_map:
+                        ghost_y = self.highway.get_note_y(gn.expected_time, self.game_session.current_time)
+                        ghost_x = self.highway.column_map[gn.midi]
+                        if 0 <= ghost_y <= self.highway.hit_line_y + 50:
+                            ghost_surf = pygame.Surface((self.highway.column_width, 8), pygame.SRCALPHA)
+                            ghost_color = {
+                                'perfect': (0, 255, 0, 60), 'good': (255, 255, 0, 60),
+                                'ok': (100, 150, 255, 60), 'miss': (255, 0, 0, 40)
+                            }.get(gn.judgment, (200, 200, 200, 50))
+                            ghost_surf.fill(ghost_color)
+                            self.screen.blit(ghost_surf, (ghost_x, ghost_y))
 
             # Only highlight the next note on the keyboard when it's
             # within 1.5 beats of the hit line (not when it's far away)

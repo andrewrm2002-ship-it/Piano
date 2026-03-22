@@ -44,6 +44,18 @@ def set_active_profile(profiles: dict, name: str):
     save_profiles(profiles)
 
 
+def get_all_profile_names(profiles: dict) -> list:
+    """Return a list of all profile names, useful for leaderboard lookups."""
+    return list(profiles.get('profiles', {}).keys())
+
+
+def get_profile_color(profiles: dict, name: str) -> tuple:
+    """Return the color tuple for a profile, defaulting to white."""
+    prof = profiles.get('profiles', {}).get(name, {})
+    color = prof.get('color', [255, 255, 255])
+    return tuple(color) if isinstance(color, list) else color
+
+
 def get_profile_data_dir(profile_name: str) -> str:
     """Return the data directory for a specific profile."""
     base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

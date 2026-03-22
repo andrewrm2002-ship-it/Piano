@@ -17,6 +17,12 @@ from piano_hero.constants import (
 from piano_hero.ui.renderer import get_font, get_title_font, draw_text, lerp_color
 from piano_hero.game.score import load_high_scores, get_letter_grade
 from piano_hero.game.statistics import load_stats, get_stars_earned, get_average_accuracy
+from piano_hero.game.curriculum import CurriculumManager
+from piano_hero.game.career import CareerManager
+from piano_hero.game.leaderboard import Leaderboard
+from piano_hero.game.events import EventManager
+from piano_hero.game.playlist import PlaylistManager
+from piano_hero.ui.themes import ThemeManager
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +62,7 @@ class MainMenu:
         self.subtitle_font = None
         self.button_font = None
         self.tip_font = None
-        self.buttons = ["PLAY", "PRACTICE", "STATS", "SETTINGS", "QUIT"]
+        self.buttons = ["PLAY", "PRACTICE", "LEARN", "CAREER", "STATS", "LEADERBOARD", "SETTINGS", "QUIT"]
         self.selected = 0
         self._anim_time = 0.0
         self._tip_index = int(time.time() / 86400) % len(DAILY_TIPS)
@@ -114,6 +120,19 @@ class MainMenu:
             draw_text(surface, streak_text, (SCREEN_WIDTH - 80, 20),
                       self.subtitle_font if hasattr(self, 'subtitle_font') else get_font(20),
                       (255, 120, 0) if streak >= 7 else COLOR_ACCENT)
+
+        # Seasonal event banner
+        try:
+            from piano_hero.game.events import EventManager
+            em = EventManager()
+            active = em.get_active_event()
+            if active:
+                event_font = get_font(14, bold=True)
+                banner_text = f"\U0001f3b5 {active.name} \u2014 {active.description}"
+                draw_text(surface, banner_text, (cx, 250), event_font,
+                          active.accent_color, center=True)
+        except Exception:
+            pass
 
         # Buttons
         y = 300
@@ -841,6 +860,13 @@ class SettingsMenu:
             'value': self.settings.get('show_score_popups', True),
         })
 
+        # Show Sheet Music
+        items.append({
+            'label': 'Show Sheet Music',
+            'type': 'toggle',
+            'value': self.settings.get('show_sheet_music', True),
+        })
+
         # 3D Perspective
         items.append({
             'label': '3D Perspective',
@@ -933,9 +959,10 @@ class SettingsMenu:
         self.settings['passthrough_enabled'] = self.items[4]['value']
         self.settings['show_timing_bar'] = self.items[5]['value']
         self.settings['show_score_popups'] = self.items[6]['value']
-        self.settings['perspective_3d'] = self.items[7]['value']
-        self.settings['wait_mode'] = self.items[8]['value']
-        self.settings['no_fail'] = self.items[9]['value']
+        self.settings['show_sheet_music'] = self.items[7]['value']
+        self.settings['perspective_3d'] = self.items[8]['value']
+        self.settings['wait_mode'] = self.items[9]['value']
+        self.settings['no_fail'] = self.items[10]['value']
 
     def _reset_defaults(self):
         """Reset all settings to defaults and rebuild items."""
@@ -946,6 +973,7 @@ class SettingsMenu:
         self.settings['passthrough_enabled'] = False
         self.settings['show_timing_bar'] = True
         self.settings['show_score_popups'] = True
+        self.settings['show_sheet_music'] = True
         self.settings['perspective_3d'] = True
         self.settings['wait_mode'] = False
         self.settings['no_fail'] = True
@@ -1338,3 +1366,427 @@ class StatsScreen:
         draw_text(surface, "Press ESC to go back",
                   (cx, SCREEN_HEIGHT - 35), self.small_font,
                   COLOR_DARK_GRAY, center=True)
+
+
+# ---------------------------------------------------------------------------
+# CurriculumScreen
+# ---------------------------------------------------------------------------
+
+class CurriculumScreen:
+    """Structured lesson curriculum with units and progressive learning."""
+
+    def __init__(self):
+        self.cm = CurriculumManager()
+        self.selected_unit = self.cm.get_current_unit()
+        self.selected_lesson = 0
+        self.mode = 'units'  # 'units' or 'lessons'
+        self.title_font = None
+        self.font = None
+        self.small_font = None
+        self.detail_font = None
+
+    def _ensure_fonts(self):
+        if self.title_font is None:
+            self.title_font = get_title_font(32)
+            self.font = get_font(22, bold=True)
+            self.small_font = get_font(14)
+            self.detail_font = get_font(16)
+
+    def handle_event(self, event):
+        if event.type != pygame.KEYDOWN:
+            return None
+        if event.key == pygame.K_ESCAPE:
+            if self.mode == 'lessons':
+                self.mode = 'units'
+                return None
+            return "back"
+
+        units = self.cm.get_units()
+
+        if self.mode == 'units':
+            if event.key == pygame.K_UP:
+                self.selected_unit = max(1, self.selected_unit - 1)
+            elif event.key == pygame.K_DOWN:
+                self.selected_unit = min(len(units), self.selected_unit + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self.mode = 'lessons'
+                self.selected_lesson = 0
+        else:  # lessons mode
+            lessons = self.cm.get_lessons_for_unit(self.selected_unit)
+            if event.key == pygame.K_UP:
+                self.selected_lesson = max(0, self.selected_lesson - 1)
+            elif event.key == pygame.K_DOWN:
+                self.selected_lesson = min(len(lessons) - 1, self.selected_lesson + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                if lessons and self.selected_lesson < len(lessons):
+                    lesson = lessons[self.selected_lesson]
+                    if self.cm.is_lesson_unlocked(lesson.id):
+                        return ("start_lesson", lesson)
+        return None
+
+    def draw(self, surface):
+        self._ensure_fonts()
+        surface.fill(MENU_BG)
+        cx = SCREEN_WIDTH // 2
+
+        draw_text(surface, "LEARN PIANO", (cx, 30), self.title_font,
+                  COLOR_ACCENT, center=True, shadow=True)
+
+        # Overall progress bar
+        progress = self.cm.get_total_progress()
+        bar_w = 400
+        bar_x = cx - bar_w // 2
+        pygame.draw.rect(surface, (40, 20, 60), (bar_x, 65, bar_w, 12), border_radius=6)
+        fill_w = int(bar_w * progress)
+        if fill_w > 0:
+            pygame.draw.rect(surface, COLOR_ACCENT, (bar_x, 65, fill_w, 12), border_radius=6)
+        draw_text(surface, f"{int(progress * 100)}% Complete", (cx, 62),
+                  self.small_font, COLOR_GRAY, center=True)
+
+        units = self.cm.get_units()
+
+        if self.mode == 'units':
+            y = 95
+            for u in units:
+                unit_num = u['unit']
+                selected = (unit_num == self.selected_unit)
+                color = COLOR_ACCENT if selected else COLOR_GRAY
+
+                # Unit card
+                card_rect = pygame.Rect(50, y, SCREEN_WIDTH - 100, 65)
+                bg = (40, 20, 70) if selected else (25, 10, 45)
+                pygame.draw.rect(surface, bg, card_rect, border_radius=8)
+                border = COLOR_ACCENT if selected else (50, 30, 70)
+                pygame.draw.rect(surface, border, card_rect, 2, border_radius=8)
+
+                # Unit number + title
+                draw_text(surface, f"Unit {unit_num}: {u['title']}", (70, y + 10),
+                          self.font, color)
+
+                # Progress
+                unit_progress = self.cm.get_unit_progress(unit_num)
+                completed = int(unit_progress * u['total_lessons'])
+                draw_text(surface, f"{completed}/{u['total_lessons']} lessons",
+                          (SCREEN_WIDTH - 150, y + 15), self.detail_font, COLOR_GRAY)
+
+                # Mini progress bar
+                mini_w = 100
+                pygame.draw.rect(surface, (40, 20, 60),
+                                 (SCREEN_WIDTH - 160, y + 40, mini_w, 6), border_radius=3)
+                fill = int(mini_w * unit_progress)
+                if fill > 0:
+                    pygame.draw.rect(surface, COLOR_ACCENT,
+                                     (SCREEN_WIDTH - 160, y + 40, fill, 6), border_radius=3)
+
+                y += 75
+
+            draw_text(surface, "UP/DOWN to browse | ENTER to open | ESC to go back",
+                      (cx, SCREEN_HEIGHT - 35), self.small_font, COLOR_DARK_GRAY, center=True)
+
+        else:  # lessons
+            lessons = self.cm.get_lessons_for_unit(self.selected_unit)
+            draw_text(surface, f"Unit {self.selected_unit}", (cx, 90),
+                      self.font, COLOR_WHITE, center=True)
+
+            y = 125
+            for i, lesson in enumerate(lessons):
+                selected = (i == self.selected_lesson)
+                unlocked = self.cm.is_lesson_unlocked(lesson.id)
+                completed = self.cm.is_lesson_completed(lesson.id)
+
+                card_rect = pygame.Rect(50, y, SCREEN_WIDTH - 100, 80)
+
+                if not unlocked:
+                    bg = (20, 10, 30)
+                    border = (40, 30, 50)
+                elif selected:
+                    bg = (40, 20, 70)
+                    border = COLOR_ACCENT
+                else:
+                    bg = (25, 10, 45)
+                    border = (50, 30, 70)
+
+                pygame.draw.rect(surface, bg, card_rect, border_radius=8)
+                pygame.draw.rect(surface, border, card_rect, 2, border_radius=8)
+
+                # Completion check
+                if completed:
+                    draw_text(surface, "\u2713", (65, y + 10), self.font, (0, 255, 100))
+                elif not unlocked:
+                    draw_text(surface, "\U0001f512", (65, y + 10), self.font, COLOR_DARK_GRAY)
+                else:
+                    draw_text(surface, "\u25cb", (65, y + 10), self.font, COLOR_GRAY)
+
+                # Lesson title + details
+                title_color = COLOR_WHITE if (unlocked and selected) else COLOR_GRAY if unlocked else COLOR_DARK_GRAY
+                draw_text(surface, f"{lesson.id}: {lesson.title}", (90, y + 10),
+                          self.font, title_color)
+                draw_text(surface, lesson.description, (90, y + 38),
+                          self.detail_font, COLOR_GRAY if unlocked else COLOR_DARK_GRAY)
+
+                # Hand mode + difficulty
+                mode_text = f"{lesson.hand_mode.title()} Hand | {lesson.difficulty} | {int(lesson.target_accuracy*100)}% to pass"
+                draw_text(surface, mode_text, (90, y + 58),
+                          self.small_font, COLOR_DARK_GRAY)
+
+                y += 90
+
+            draw_text(surface, "UP/DOWN to browse | ENTER to start | ESC to go back",
+                      (cx, SCREEN_HEIGHT - 35), self.small_font, COLOR_DARK_GRAY, center=True)
+
+
+# ---------------------------------------------------------------------------
+# CareerScreen
+# ---------------------------------------------------------------------------
+
+class CareerScreen:
+    """Career mode with venue progression."""
+
+    def __init__(self, career_manager):
+        self.cm = career_manager
+        self.selected = 0
+        self.mode = 'venues'  # 'venues' or 'songs'
+        self.selected_song = 0
+        self.title_font = None
+        self.font = None
+        self.small_font = None
+        self.detail_font = None
+
+    def _ensure_fonts(self):
+        if self.title_font is None:
+            self.title_font = get_title_font(32)
+            self.font = get_font(22, bold=True)
+            self.small_font = get_font(14)
+            self.detail_font = get_font(16)
+
+    def handle_event(self, event):
+        if event.type != pygame.KEYDOWN:
+            return None
+        if event.key == pygame.K_ESCAPE:
+            if self.mode == 'songs':
+                self.mode = 'venues'
+                return None
+            return "back"
+
+        venues = self.cm.get_venues()
+        total_stars = get_stars_earned(load_stats())
+
+        if self.mode == 'venues':
+            if event.key == pygame.K_UP:
+                self.selected = max(0, self.selected - 1)
+            elif event.key == pygame.K_DOWN:
+                self.selected = min(len(venues) - 1, self.selected + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                venue = venues[self.selected]
+                if self.cm.is_venue_unlocked(venue.id, total_stars):
+                    self.mode = 'songs'
+                    self.selected_song = 0
+        else:
+            venue = venues[self.selected]
+            songs = venue.songs
+            if event.key == pygame.K_UP:
+                self.selected_song = max(0, self.selected_song - 1)
+            elif event.key == pygame.K_DOWN:
+                self.selected_song = min(len(songs) - 1, self.selected_song + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                song_info = songs[self.selected_song]
+                return ("play_career", venue.id, song_info)
+        return None
+
+    def draw(self, surface):
+        self._ensure_fonts()
+        surface.fill(MENU_BG)
+        cx = SCREEN_WIDTH // 2
+        total_stars = get_stars_earned(load_stats())
+
+        draw_text(surface, "CAREER MODE", (cx, 30), self.title_font,
+                  COLOR_ACCENT, center=True, shadow=True)
+        draw_text(surface, f"Total Stars: {total_stars}", (cx, 65),
+                  self.detail_font, COLOR_GRAY, center=True)
+
+        venues = self.cm.get_venues()
+
+        if self.mode == 'venues':
+            y = 95
+            for i, venue in enumerate(venues):
+                selected = (i == self.selected)
+                unlocked = self.cm.is_venue_unlocked(venue.id, total_stars)
+                cleared = self.cm.is_venue_cleared(venue.id)
+
+                card_rect = pygame.Rect(50, y, SCREEN_WIDTH - 100, 80)
+
+                if not unlocked:
+                    bg = (20, 10, 30)
+                elif selected:
+                    bg = (venue.bg_color_top[0]//4, venue.bg_color_top[1]//4, venue.bg_color_top[2]//4)
+                else:
+                    bg = (25, 10, 45)
+
+                pygame.draw.rect(surface, bg, card_rect, border_radius=8)
+                border = venue.accent_color if selected and unlocked else (50, 30, 70)
+                pygame.draw.rect(surface, border, card_rect, 2, border_radius=8)
+
+                # Venue name
+                name_color = venue.accent_color if unlocked else COLOR_DARK_GRAY
+                draw_text(surface, venue.name, (70, y + 10), self.font, name_color)
+                draw_text(surface, venue.description, (70, y + 38),
+                          self.detail_font, COLOR_GRAY if unlocked else COLOR_DARK_GRAY)
+
+                # Status
+                if cleared:
+                    draw_text(surface, "CLEARED!", (SCREEN_WIDTH - 130, y + 15),
+                              self.font, (0, 255, 100))
+                elif not unlocked:
+                    draw_text(surface, f"Need {venue.stars_required} \u2605",
+                              (SCREEN_WIDTH - 140, y + 20), self.detail_font, COLOR_DARK_GRAY)
+                else:
+                    progress = self.cm.get_venue_progress(venue.id)
+                    draw_text(surface, f"{progress.get('completed', 0)}/{len(venue.songs)} songs",
+                              (SCREEN_WIDTH - 150, y + 20), self.detail_font, COLOR_GRAY)
+
+                y += 90
+
+            draw_text(surface, "UP/DOWN to browse | ENTER to open | ESC to go back",
+                      (cx, SCREEN_HEIGHT - 35), self.small_font, COLOR_DARK_GRAY, center=True)
+
+        else:  # songs
+            venue = venues[self.selected]
+            draw_text(surface, venue.name, (cx, 90), self.font,
+                      venue.accent_color, center=True)
+
+            y = 130
+            for i, song_info in enumerate(venue.songs):
+                selected = (i == self.selected_song)
+                card_rect = pygame.Rect(80, y, SCREEN_WIDTH - 160, 50)
+                bg = (40, 20, 70) if selected else (25, 10, 45)
+                pygame.draw.rect(surface, bg, card_rect, border_radius=6)
+                border = venue.accent_color if selected else (50, 30, 70)
+                pygame.draw.rect(surface, border, card_rect, 1, border_radius=6)
+
+                draw_text(surface, song_info['file'].replace('.json', '').replace('_', ' ').title(),
+                          (100, y + 8), self.font,
+                          COLOR_WHITE if selected else COLOR_GRAY)
+                draw_text(surface, f"{song_info['difficulty']} | Need {song_info['required_stars']}\u2605",
+                          (100, y + 32), self.small_font, COLOR_DARK_GRAY)
+
+                # Show best stars for this song in this venue
+                best = self.cm.get_venue_progress(venue.id).get('song_stars', {}).get(song_info['file'], 0)
+                if best > 0:
+                    for s in range(best):
+                        pygame.draw.polygon(surface, COLOR_STAR_FILLED,
+                                            draw_star_points(SCREEN_WIDTH - 120 + s * 20, y + 25, 8))
+
+                y += 58
+
+            draw_text(surface, "UP/DOWN to browse | ENTER to play | ESC to go back",
+                      (cx, SCREEN_HEIGHT - 35), self.small_font, COLOR_DARK_GRAY, center=True)
+
+
+# ---------------------------------------------------------------------------
+# LeaderboardScreen
+# ---------------------------------------------------------------------------
+
+class LeaderboardScreen:
+    """Family leaderboard showing rankings across profiles."""
+
+    def __init__(self, leaderboard):
+        self.lb = leaderboard
+        self.mode = 'overall'  # 'overall' or 'weekly'
+        self.title_font = None
+        self.font = None
+        self.small_font = None
+        self.detail_font = None
+
+    def _ensure_fonts(self):
+        if self.title_font is None:
+            self.title_font = get_title_font(32)
+            self.font = get_font(22, bold=True)
+            self.small_font = get_font(14)
+            self.detail_font = get_font(16)
+
+    def handle_event(self, event):
+        if event.type != pygame.KEYDOWN:
+            return None
+        if event.key == pygame.K_ESCAPE:
+            return "back"
+        if event.key == pygame.K_TAB:
+            self.mode = 'weekly' if self.mode == 'overall' else 'overall'
+        return None
+
+    def draw(self, surface):
+        self._ensure_fonts()
+        surface.fill(MENU_BG)
+        cx = SCREEN_WIDTH // 2
+
+        draw_text(surface, "LEADERBOARD", (cx, 30), self.title_font,
+                  COLOR_ACCENT, center=True, shadow=True)
+
+        # Tab bar
+        tab_y = 70
+        for i, (mode, label) in enumerate([('overall', 'Overall'), ('weekly', 'Weekly Challenge')]):
+            tab_w = 180
+            tab_x = cx - 190 + i * 200
+            tab_rect = pygame.Rect(tab_x, tab_y, tab_w, 28)
+            if mode == self.mode:
+                pygame.draw.rect(surface, COLOR_ACCENT, tab_rect, border_radius=5)
+                draw_text(surface, label, (tab_x + tab_w // 2, tab_y + 14),
+                          self.detail_font, COLOR_BLACK, center=True)
+            else:
+                pygame.draw.rect(surface, (40, 20, 60), tab_rect, border_radius=5)
+                draw_text(surface, label, (tab_x + tab_w // 2, tab_y + 14),
+                          self.detail_font, COLOR_GRAY, center=True)
+
+        if self.mode == 'overall':
+            rankings = self.lb.get_overall_leaderboard()
+            y = 120
+
+            # Header
+            draw_text(surface, "Rank", (70, y), self.detail_font, COLOR_ACCENT)
+            draw_text(surface, "Player", (150, y), self.detail_font, COLOR_ACCENT)
+            draw_text(surface, "Score", (400, y), self.detail_font, COLOR_ACCENT)
+            draw_text(surface, "Songs", (550, y), self.detail_font, COLOR_ACCENT)
+            draw_text(surface, "Stars", (650, y), self.detail_font, COLOR_ACCENT)
+            draw_text(surface, "Accuracy", (750, y), self.detail_font, COLOR_ACCENT)
+            y += 30
+
+            medals = [(255, 215, 0), (192, 192, 192), (205, 127, 50)]
+
+            for i, r in enumerate(rankings):
+                color = medals[i] if i < 3 else COLOR_WHITE
+                draw_text(surface, f"#{i+1}", (70, y), self.font, color)
+                draw_text(surface, r['profile'], (150, y), self.font, color)
+                draw_text(surface, f"{r['total_score']:,}", (400, y), self.detail_font, COLOR_WHITE)
+                draw_text(surface, str(r['songs_played']), (550, y), self.detail_font, COLOR_GRAY)
+                draw_text(surface, str(r['total_stars']), (650, y), self.detail_font, COLOR_GRAY)
+                draw_text(surface, f"{r['avg_accuracy']*100:.1f}%", (750, y), self.detail_font, COLOR_GRAY)
+                y += 40
+
+            if not rankings:
+                draw_text(surface, "No scores yet! Play some songs to get on the board.",
+                          (cx, 250), self.detail_font, COLOR_DARK_GRAY, center=True)
+
+        else:  # weekly
+            challenge = self.lb.get_weekly_challenge()
+            y = 120
+            draw_text(surface, challenge['description'], (cx, y), self.font,
+                      COLOR_WHITE, center=True)
+            y += 40
+            if challenge.get('speed', 1.0) != 1.0:
+                draw_text(surface, f"Speed: {int(challenge['speed']*100)}%", (cx, y),
+                          self.detail_font, COLOR_ACCENT, center=True)
+                y += 30
+
+            y += 10
+            leaders = challenge.get('leaderboard', [])
+            for i, entry in enumerate(leaders):
+                color = COLOR_WHITE
+                draw_text(surface, f"#{i+1}  {entry.profile}  \u2014  {entry.score:,}  ({entry.accuracy*100:.0f}%)",
+                          (cx, y), self.detail_font, color, center=True)
+                y += 30
+
+            if not leaders:
+                draw_text(surface, "No entries yet for this week's challenge!",
+                          (cx, y + 20), self.detail_font, COLOR_DARK_GRAY, center=True)
+
+        draw_text(surface, "TAB to switch views | ESC to go back",
+                  (cx, SCREEN_HEIGHT - 35), self.small_font, COLOR_DARK_GRAY, center=True)
