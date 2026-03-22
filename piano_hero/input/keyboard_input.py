@@ -90,6 +90,24 @@ for key, midi in _WHITE_HOME + _BLACK_QWERTY + _WHITE_BOTTOM + _BLACK_NUMBER:
     CHROMATIC_MAP[key] = midi
 
 
+# ── Yamaha Keyboard Game Controls ────────────────────────────────────────────
+# Far-left keys (C2-B2, MIDI 36-47) are unused by all 65 songs.
+# Map them to game actions so players never need to leave the keyboard.
+YAMAHA_CONTROLS = {
+    36: 'restart',       # C2  = Restart current song
+    38: 'next_song',     # D2  = Next song in list
+    40: 'prev_song',     # E2  = Previous song
+    41: 'pause',         # F2  = Pause / Resume
+    43: 'star_power',    # G2  = Activate Star Power
+    45: 'speed_toggle',  # A2  = Cycle practice speed (50/75/100%)
+    47: 'back_to_menu',  # B2  = Return to song select
+    # Far-right keys (A#5-C6, MIDI 82-84) also unused:
+    82: 'wait_toggle',   # A#5 = Toggle wait mode
+    83: 'names_toggle',  # B5  = Toggle note name display
+    84: 'speed_toggle',  # C6  = Cycle practice speed
+}
+
+
 # ── Reverse map for display labels ──────────────────────────────────────────
 
 _KEY_NAMES = {
@@ -153,6 +171,12 @@ class KeyboardNoteInput:
             self._pressed_keys.discard(event.key)
 
         return False
+
+    @staticmethod
+    def get_yamaha_action(midi: int) -> str:
+        """Check if a MIDI note corresponds to a Yamaha control key.
+        Returns action name or empty string."""
+        return YAMAHA_CONTROLS.get(midi, '')
 
     def get_key_for_midi(self, midi: int) -> str:
         """Return the keyboard key name for a given MIDI note, or ''."""

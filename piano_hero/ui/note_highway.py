@@ -52,7 +52,7 @@ _APPROACH_GLOW_BEATS = 2.0    # glow starts this many beats before hit line
 _MIN_NOTE_HEIGHT = 12         # minimum rendered height for very short notes
 
 # NOW zone
-_NOW_ZONE_HALF = 5            # half-thickness of the NOW band (total ~10px)
+_NOW_ZONE_HALF = 10           # half-thickness of the NOW band (total ~20px)
 
 # Star Power palette
 _SP_BG = (5, 10, 50)
@@ -80,6 +80,7 @@ class NoteHighway:
         self.pixels_per_second = 0
         self.show_note_names = True
         self.beat_duration = 0.5      # seconds per beat (set from tempo)
+        self.perspective_enabled = True
 
         # Post-hit / miss animations
         self._animations: list[NoteAnimation] = []
@@ -96,6 +97,8 @@ class NoteHighway:
         *y* is in screen space (0 = top of highway, highway_height = bottom).
         Returns (px, py, scale) where *scale* can be used to size elements.
         """
+        if not self.perspective_enabled:
+            return x, y, 1.0
         t = max(0.0, min(1.0, y / self.highway_height))  # 0 top, 1 bottom
         scale = 0.35 + 0.65 * t   # 35 % at top, 100 % at bottom
         center_x = self.highway_width / 2
@@ -358,7 +361,7 @@ class NoteHighway:
 
     def _draw_column_guides(self, surface):
         """Subtle vertical lines for each column, converging in perspective."""
-        guide_color = (30, 15, 50)
+        guide_color = (55, 35, 80)
         for midi, raw_x in self.column_map.items():
             cx_raw = raw_x + self.column_width // 2
             prev_px, prev_py = None, None

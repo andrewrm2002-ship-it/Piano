@@ -810,6 +810,27 @@ class SettingsMenu:
             'value': self.settings.get('show_score_popups', True),
         })
 
+        # 3D Perspective
+        items.append({
+            'label': '3D Perspective',
+            'type': 'toggle',
+            'value': self.settings.get('perspective_3d', True),
+        })
+
+        # Wait Mode
+        items.append({
+            'label': 'Wait Mode',
+            'type': 'toggle',
+            'value': self.settings.get('wait_mode', False),
+        })
+
+        # No Fail Mode
+        items.append({
+            'label': 'No Fail Mode',
+            'type': 'toggle',
+            'value': self.settings.get('no_fail', True),
+        })
+
         # Auto-Calibrate
         items.append({
             'label': 'Auto-Calibrate',
@@ -881,6 +902,9 @@ class SettingsMenu:
         self.settings['passthrough_enabled'] = self.items[4]['value']
         self.settings['show_timing_bar'] = self.items[5]['value']
         self.settings['show_score_popups'] = self.items[6]['value']
+        self.settings['perspective_3d'] = self.items[7]['value']
+        self.settings['wait_mode'] = self.items[8]['value']
+        self.settings['no_fail'] = self.items[9]['value']
 
     def _reset_defaults(self):
         """Reset all settings to defaults and rebuild items."""
@@ -891,6 +915,9 @@ class SettingsMenu:
         self.settings['passthrough_enabled'] = False
         self.settings['show_timing_bar'] = True
         self.settings['show_score_popups'] = True
+        self.settings['perspective_3d'] = True
+        self.settings['wait_mode'] = False
+        self.settings['no_fail'] = True
         self.items = self._build_items()
 
     def draw(self, surface, input_level=0.0):

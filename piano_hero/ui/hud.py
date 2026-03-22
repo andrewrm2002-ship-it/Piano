@@ -2,6 +2,7 @@
 wrong-note feedback, live accuracy, and keyboard shortcut hints."""
 
 import math
+import time
 import pygame
 from piano_hero.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, HIGHWAY_WIDTH_RATIO,
@@ -191,6 +192,11 @@ class HUD:
                 pygame.draw.rect(surface, COLOR_ACCENT,
                                  (bar_x, y, fill_w, bar_h), border_radius=4)
 
+        # -- Persistent control hints (always visible) ---------------------
+        hint_y = SCREEN_HEIGHT - KEYBOARD_HEIGHT - 12
+        draw_text(surface, "P:Pause  SPACE:StarPower  ESC:Quit",
+                  (cx, hint_y), self.hint_font, (50, 40, 60), center=True)
+
         # -- Wrong note display with penalty --------------------------------
         if hasattr(game_session, "get_recent_wrong_notes"):
             wrong = game_session.get_recent_wrong_notes(1.5)
@@ -243,6 +249,17 @@ class HUD:
         # -- Star Power meter (below health) ------------------------------
         self._draw_star_power_meter(surface, game_session)
 
+        # -- Wait mode indicator ------------------------------------------
+        if getattr(game_session, '_waiting', False):
+            hw = int(SCREEN_WIDTH * HIGHWAY_WIDTH_RATIO)
+            wait_font = get_title_font(32)
+            pulse = 0.5 + 0.5 * math.sin(time.time() * 3)
+            alpha = int(180 + 75 * pulse)
+            wait_surf = wait_font.render("WAITING...", True, COLOR_ACCENT)
+            wait_surf.set_alpha(alpha)
+            wait_rect = wait_surf.get_rect(center=(hw // 2, self.highway_height - 40))
+            surface.blit(wait_surf, wait_rect)
+
         self._draw_combo_announcements(surface, game_session)
 
     # ------------------------------------------------------------------
@@ -253,7 +270,7 @@ class HUD:
         """Draw a vertical health bar on the left edge of the highway."""
         health = getattr(game_session, 'health', 0.5)
         bar_x = 8
-        bar_w = 12
+        bar_w = 18
         bar_h = int(self.highway_height * 0.5)
         bar_y = 60
 
@@ -281,7 +298,7 @@ class HUD:
         meter = getattr(game_session, 'star_power_meter', 0.0)
         active = getattr(game_session, 'star_power_active', False)
         bar_x = 8
-        bar_w = 12
+        bar_w = 18
         bar_h = 50
         hw_h = int(self.highway_height * 0.5)
         bar_y = 60 + hw_h + 15

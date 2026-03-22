@@ -189,14 +189,20 @@ class KeyboardDisplay:
                 else:
                     del self._wrong_flashes[midi]
 
-            # Active hold glow — steady pulsing green glow while holding
+            # Active hold glow — pulsing glow while holding (color varies by key type)
             hold_midis = active_hold_midis or set()
             if midi in hold_midis:
                 pulse = 0.6 + 0.4 * math.sin(now * 6)
-                hold_alpha = int(100 * pulse)
+                # Use different glow colors for contrast on white vs black keys
+                if is_black_key(midi):
+                    hold_color = (0, 255, 100)  # Green on black = visible
+                    hold_alpha = int(100 * pulse)
+                else:
+                    hold_color = (0, 100, 200)  # Blue on white = visible
+                    hold_alpha = int(140 * pulse)
                 hold_overlay = pygame.Surface(
                     (rect.width, rect.height), pygame.SRCALPHA)
-                hold_overlay.fill((0, 255, 100, hold_alpha))
+                hold_overlay.fill((*hold_color, hold_alpha))
                 surface.blit(hold_overlay, rect.topleft)
 
         # Draw keyboard key labels (computer keyboard mapping)

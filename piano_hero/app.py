@@ -8,7 +8,7 @@ import pygame
 from piano_hero.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, TARGET_FPS, TITLE, BG_COLOR,
     HIGHWAY_WIDTH_RATIO, KEYBOARD_HEIGHT, COLOR_WHITE, COLOR_ACCENT,
-    COLOR_DARK_GRAY, COLOR_PERFECT, COLOR_GOOD, COLOR_MISS,
+    COLOR_DARK_GRAY, COLOR_GRAY, COLOR_PERFECT, COLOR_GOOD, COLOR_MISS,
     COMBO_MILESTONES,
 )
 from piano_hero.audio.audio_engine import AudioEngine
@@ -222,10 +222,22 @@ class App:
             elif self.state == STATE_PLAYING:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        self.state = STATE_CONFIRM_QUIT
+                        if self.game_session and self.game_session.paused:
+                            # ESC while paused = go to song select
+                            self.game_session = None
+                            while not self.pitch_queue.empty():
+                                try: self.pitch_queue.get_nowait()
+                                except queue.Empty: break
+                            self.state = STATE_SONG_SELECT
+                        else:
+                            self.state = STATE_CONFIRM_QUIT
                     elif event.key == pygame.K_p:
                         if self.game_session:
                             self.game_session.toggle_pause()
+                    elif event.key == pygame.K_r:
+                        if self.game_session and self.game_session.paused:
+                            song = self.game_session.song
+                            self._start_game(song, self._practice_speed)
                     elif event.key == pygame.K_SPACE:
                         if self.game_session:
                             self.game_session.activate_star_power()
@@ -351,6 +363,43 @@ class App:
             while self._last_hold_count < len(holds):
                 self._last_hold_count += 1
 
+            # Check for Yamaha keyboard game controls
+            if self.game_session.note_just_detected and self.game_session.current_detected_note:
+                from piano_hero.input.keyboard_input import KeyboardNoteInput
+                detected_midi = self.game_session.current_detected_note[1]
+                yamaha_action = KeyboardNoteInput.get_yamaha_action(detected_midi)
+                if yamaha_action == 'restart':
+                    song = self.game_session.song
+                    self._start_game(song, self._practice_speed)
+                    return
+                elif yamaha_action == 'pause':
+                    self.game_session.toggle_pause()
+                elif yamaha_action == 'star_power':
+                    self.game_session.activate_star_power()
+                elif yamaha_action == 'back_to_menu':
+                    self.game_session = None
+                    self.state = STATE_SONG_SELECT
+                    return
+                elif yamaha_action == 'next_song':
+                    # Find next song in list
+                    if self.song_select and self.song_select.songs:
+                        idx = self.song_select.selected
+                        if idx < len(self.song_select.songs) - 1:
+                            self.song_select.selected = idx + 1
+                            next_song = self.song_select.get_selected_song()
+                            if next_song:
+                                self._start_game(next_song, self._practice_speed)
+                                return
+                elif yamaha_action == 'prev_song':
+                    if self.song_select and self.song_select.songs:
+                        idx = self.song_select.selected
+                        if idx > 0:
+                            self.song_select.selected = idx - 1
+                            prev_song = self.song_select.get_selected_song()
+                            if prev_song:
+                                self._start_game(prev_song, self._practice_speed)
+                                return
+
             # Audio passthrough: play detected notes through speakers
             if self.settings.get('passthrough_enabled', True):
                 detected = self.game_session.current_detected_note
@@ -408,6 +457,7 @@ class App:
 
             show_names = self.settings.get('show_note_names', True)
             star_power = getattr(self.game_session, 'star_power_active', False)
+            self.highway.perspective_enabled = self.settings.get('perspective_3d', True)
             self.highway.draw(self.screen, self.game_session.current_time,
                               self.game_session.notes, show_names,
                               game_session=self.game_session,
@@ -478,16 +528,30 @@ class App:
 
     def _draw_pause_overlay(self):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
+        overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
+        cx = SCREEN_WIDTH // 2
+        cy = SCREEN_HEIGHT // 2
+
         font = get_title_font(48)
-        draw_text(self.screen, "PAUSED",
-                  (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30),
-                  font, COLOR_WHITE, center=True, shadow=True)
-        small = get_font(18)
-        draw_text(self.screen, "Press P to resume | ESC to quit",
-                  (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30),
-                  small, COLOR_DARK_GRAY, center=True)
+        draw_text(self.screen, "PAUSED", (cx, cy - 80), font,
+                  COLOR_WHITE, center=True, shadow=True)
+
+        # Pause menu options
+        menu_font = get_font(24, bold=True)
+        options = [
+            ("Resume (P)", COLOR_ACCENT),
+            ("Restart (R)", COLOR_ACCENT),
+            ("Song Select (ESC)", COLOR_GRAY),
+        ]
+        for i, (text, color) in enumerate(options):
+            draw_text(self.screen, text, (cx, cy - 10 + i * 40),
+                      menu_font, color, center=True)
+
+        # Yamaha keyboard hints
+        hint_font = get_font(14)
+        draw_text(self.screen, "Yamaha: F2=Pause  C2=Restart  B2=Song Select",
+                  (cx, cy + 120), hint_font, COLOR_DARK_GRAY, center=True)
 
     def _draw_confirm_quit(self):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
