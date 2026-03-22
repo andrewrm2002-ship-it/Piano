@@ -24,6 +24,7 @@ from piano_hero.ui.keyboard_display import KeyboardDisplay
 from piano_hero.ui.hud import HUD
 from piano_hero.ui.effects import EffectsManager
 from piano_hero.input.keyboard_input import KeyboardNoteInput
+from piano_hero.input.midi_input import MidiInput
 
 # States
 STATE_MENU = "menu"
@@ -53,6 +54,7 @@ class App:
         self.audio_engine = None
         self.sfx = SoundEffects()
         self.keyboard_input = KeyboardNoteInput(self.pitch_queue)
+        self.midi_input = MidiInput(self.pitch_queue)
 
         # Songs
         self.songs_dir = os.path.join(os.path.dirname(os.path.dirname(
@@ -112,6 +114,16 @@ class App:
         # Init audio
         self._init_audio()
 
+        # Start MIDI input if a device is available
+        midi_device = self.settings.get('midi_device')
+        self.midi_input = MidiInput(self.pitch_queue, device_id=midi_device)
+        try:
+            self.midi_input.start()
+            if self.midi_input.is_running():
+                print(f"MIDI input connected")
+        except Exception:
+            pass
+
         # Main loop
         while self.running:
             dt = self.clock.tick(TARGET_FPS) / 1000.0
@@ -136,6 +148,8 @@ class App:
     def _cleanup(self):
         if self.audio_engine:
             self.audio_engine.stop()
+        if self.midi_input:
+            self.midi_input.stop()
         pygame.quit()
 
     def _handle_events(self):
@@ -400,6 +414,21 @@ class App:
                                 self._start_game(prev_song, self._practice_speed)
                                 return
 
+            # Also check MIDI input for Yamaha control actions
+            if self.midi_input and self.midi_input.is_running():
+                midi_action = self.midi_input.get_last_action()
+                if midi_action == 'restart':
+                    self._start_game(self.game_session.song, self._practice_speed)
+                    return
+                elif midi_action == 'pause':
+                    self.game_session.toggle_pause()
+                elif midi_action == 'star_power':
+                    self.game_session.activate_star_power()
+                elif midi_action == 'back_to_menu':
+                    self.game_session = None
+                    self.state = STATE_SONG_SELECT
+                    return
+
             # Audio passthrough: play detected notes through speakers
             if self.settings.get('passthrough_enabled', True):
                 detected = self.game_session.current_detected_note
@@ -425,6 +454,17 @@ class App:
                     tracker,
                     self.game_session.scaled_duration,
                 )
+                # Check achievements
+                from piano_hero.game.achievements import check_achievements
+                session_data = {
+                    'score_tracker': tracker,
+                    'song_title': self.game_session.song.title,
+                    'practice_mode': self._practice_mode,
+                }
+                new_achievements = check_achievements(self.stats, session_data)
+                if new_achievements:
+                    self.effects.spawn_celebration(SCREEN_WIDTH, SCREEN_HEIGHT)
+
                 from piano_hero.ui.menu import ResultsScreen
                 self.results_screen = ResultsScreen(
                     self.game_session.song, tracker, diff_mult)
@@ -494,7 +534,9 @@ class App:
             self.effects.draw(self.screen)
 
             if self.game_session.countdown_active and self.game_session.current_time < 0:
-                self.hud.draw_countdown(self.screen, -self.game_session.current_time)
+                from piano_hero.game.lessons import get_lesson_tip
+                tip = get_lesson_tip(self.game_session.song)
+                self.hud.draw_countdown(self.screen, -self.game_session.current_time, tip)
 
             if self.game_session.paused:
                 self._draw_pause_overlay()

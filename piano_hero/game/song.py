@@ -120,12 +120,12 @@ def _compute_difficulty(song: Song):
 
     song.difficulty_score = density_score + tempo_score + range_score + unique_score
 
-    # Map to tiers
-    if song.difficulty_score < 25:
+    # Map to tiers (generous thresholds so most songs are accessible)
+    if song.difficulty_score < 30:
         song.difficulty_tier = 'beginner'
-    elif song.difficulty_score < 45:
+    elif song.difficulty_score < 55:
         song.difficulty_tier = 'easy'
-    elif song.difficulty_score < 65:
+    elif song.difficulty_score < 75:
         song.difficulty_tier = 'medium'
     else:
         song.difficulty_tier = 'hard'
@@ -259,3 +259,17 @@ def load_all_songs(songs_dir: str) -> list:
             except Exception as e:
                 print(f"Warning: Failed to load {filename}: {e}")
     return songs
+
+
+def is_song_unlocked(song: Song, total_stars: int) -> bool:
+    """Check if a song is unlocked based on total stars earned.
+
+    Beginner/Easy: always unlocked
+    Medium: requires 5 total stars
+    Hard: requires 15 total stars
+    """
+    from piano_hero.constants import DIFFICULTY_TIERS
+    tier = getattr(song, 'difficulty_tier', 'easy')
+    tier_info = DIFFICULTY_TIERS.get(tier, {})
+    required = tier_info.get('unlock', 0)
+    return total_stars >= required

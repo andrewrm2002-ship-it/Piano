@@ -1,0 +1,86 @@
+{
+  "title": "Barcarolle (With Chords)",
+  "composer": "Jacques Offenbach",
+  "tempo": 56,
+  "time_signature": [6, 8],
+  "difficulty": "grade4",
+  "category": "Classical",
+  "notes": [
+    {"note": "C3", "start": 0.0, "duration": 3.0},
+    {"note": "E3", "start": 0.0, "duration": 3.0},
+    {"note": "G3", "start": 0.0, "duration": 3.0},
+    {"note": "E4", "start": 0.0, "duration": 1.5},
+    {"note": "E4", "start": 1.5, "duration": 1.0},
+    {"note": "F4", "start": 2.5, "duration": 0.5},
+
+    {"note": "G2", "start": 3.0, "duration": 3.0},
+    {"note": "B2", "start": 3.0, "duration": 3.0},
+    {"note": "D3", "start": 3.0, "duration": 3.0},
+    {"note": "G4", "start": 3.0, "duration": 1.5},
+    {"note": "F4", "start": 4.5, "duration": 1.0},
+    {"note": "E4", "start": 5.5, "duration": 0.5},
+
+    {"note": "F2", "start": 6.0, "duration": 3.0},
+    {"note": "A2", "start": 6.0, "duration": 3.0},
+    {"note": "C3", "start": 6.0, "duration": 3.0},
+    {"note": "F4", "start": 6.0, "duration": 1.5},
+    {"note": "E4", "start": 7.5, "duration": 1.0},
+    {"note": "D4", "start": 8.5, "duration": 0.5},
+
+    {"note": "C3", "start": 9.0, "duration": 3.0},
+    {"note": "E3", "start": 9.0, "duration": 3.0},
+    {"note": "G3", "start": 9.0, "duration": 3.0},
+    {"note": "E4", "start": 9.0, "duration": 3.0},
+
+    {"note": "C3", "start": 12.0, "duration": 3.0},
+    {"note": "E3", "start": 12.0, "duration": 3.0},
+    {"note": "G3", "start": 12.0, "duration": 3.0},
+    {"note": "E4", "start": 12.0, "duration": 1.5},
+    {"note": "E4", "start": 13.5, "duration": 1.0},
+    {"note": "F4", "start": 14.5, "duration": 0.5},
+
+    {"note": "G2", "start": 15.0, "duration": 3.0},
+    {"note": "B2", "start": 15.0, "duration": 3.0},
+    {"note": "D3", "start": 15.0, "duration": 3.0},
+    {"note": "G4", "start": 15.0, "duration": 1.5},
+    {"note": "F4", "start": 16.5, "duration": 1.0},
+    {"note": "E4", "start": 17.5, "duration": 0.5},
+
+    {"note": "F2", "start": 18.0, "duration": 3.0},
+    {"note": "A2", "start": 18.0, "duration": 3.0},
+    {"note": "C3", "start": 18.0, "duration": 3.0},
+    {"note": "D4", "start": 18.0, "duration": 1.5},
+    {"note": "E4", "start": 19.5, "duration": 1.5},
+
+    {"note": "G2", "start": 21.0, "duration": 3.0},
+    {"note": "B2", "start": 21.0, "duration": 3.0},
+    {"note": "D3", "start": 21.0, "duration": 3.0},
+    {"note": "D4", "start": 21.0, "duration": 3.0},
+
+    {"note": "C3", "start": 24.0, "duration": 3.0},
+    {"note": "E3", "start": 24.0, "duration": 3.0},
+    {"note": "G3", "start": 24.0, "duration": 3.0},
+    {"note": "G4", "start": 24.0, "duration": 1.5},
+    {"note": "G4", "start": 25.5, "duration": 1.0},
+    {"note": "A4", "start": 26.5, "duration": 0.5},
+
+    {"note": "F2", "start": 27.0, "duration": 3.0},
+    {"note": "A2", "start": 27.0, "duration": 3.0},
+    {"note": "C3", "start": 27.0, "duration": 3.0},
+    {"note": "C5", "start": 27.0, "duration": 1.5},
+    {"note": "A4", "start": 28.5, "duration": 1.0},
+    {"note": "G4", "start": 29.5, "duration": 0.5},
+
+    {"note": "G2", "start": 30.0, "duration": 3.0},
+    {"note": "B2", "start": 30.0, "duration": 3.0},
+    {"note": "D3", "start": 30.0, "duration": 3.0},
+    {"note": "F4", "start": 30.0, "duration": 1.5},
+    {"note": "E4", "start": 31.5, "duration": 1.0},
+    {"note": "D4", "start": 32.5, "duration": 0.5},
+
+    {"note": "C3", "start": 33.0, "duration": 3.0},
+    {"note": "E3", "start": 33.0, "duration": 3.0},
+    {"note": "G3", "start": 33.0, "duration": 3.0},
+    {"note": "C4", "start": 33.0, "duration": 3.0}
+  ]
+}

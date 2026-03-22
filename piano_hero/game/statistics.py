@@ -116,3 +116,58 @@ def get_average_accuracy(stats: dict) -> float:
     if not history:
         return 0.0
     return sum(h["accuracy"] for h in history) / len(history)
+
+
+def get_difficulty_suggestion(stats: dict, current_song_accuracy: float = 0.0) -> str:
+    """Suggest difficulty adjustments based on recent performance.
+
+    Returns one of: 'easier', 'harder', 'same', or '' (no suggestion).
+    """
+    history = stats.get('accuracy_history', [])
+    if len(history) < 3:
+        return ''
+
+    recent = history[-3:]
+    avg_acc = sum(h['accuracy'] for h in recent) / len(recent)
+
+    if avg_acc < 0.5:
+        return 'easier'  # Struggling — suggest slower speed or easier arrangement
+    elif avg_acc > 0.9 and all(h.get('stars', 0) >= 4 for h in recent):
+        return 'harder'  # Crushing it — suggest harder songs
+    return 'same'
+
+
+def get_trouble_spots(note_results: list, song_notes: list,
+                      max_spots: int = 3) -> list:
+    """Identify the hardest passages in a song based on note_results.
+
+    Returns list of (start_beat, end_beat, miss_count) tuples for the
+    worst sections, suitable for setting loop_start_beat/loop_end_beat.
+    """
+    if not note_results or not song_notes:
+        return []
+
+    # Divide the song into 4-beat windows and count misses per window
+    if not song_notes:
+        return []
+
+    max_beat = max(n.start_beat for n in song_notes)
+    window_size = 4.0  # beats per window
+    windows = {}
+
+    for i, result in enumerate(note_results):
+        if i < len(song_notes):
+            beat = song_notes[i].start_beat
+            window_idx = int(beat / window_size)
+            if window_idx not in windows:
+                windows[window_idx] = {'misses': 0, 'total': 0, 'start': window_idx * window_size}
+            windows[window_idx]['total'] += 1
+            if result.get('judgment') in ('miss', 'ok'):
+                windows[window_idx]['misses'] += 1
+
+    # Sort by miss ratio, take worst spots
+    bad_windows = [(w['start'], w['start'] + window_size, w['misses'])
+                   for w in windows.values() if w['misses'] > 0]
+    bad_windows.sort(key=lambda x: -x[2])
+
+    return bad_windows[:max_spots]

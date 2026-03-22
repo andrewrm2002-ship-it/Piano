@@ -416,7 +416,7 @@ class HUD:
     # Countdown
     # ------------------------------------------------------------------
 
-    def draw_countdown(self, surface, countdown_value):
+    def draw_countdown(self, surface, countdown_value, lesson_tip=""):
         """Draw countdown number centred on the highway, plus shortcut hints."""
         self._ensure_fonts()
 
@@ -433,6 +433,12 @@ class HUD:
         font = get_title_font(80)
         draw_text(surface, text, (cx, cy), font, color, center=True,
                   shadow=True)
+
+        # Micro-lesson tip (shown during countdown, not on GO)
+        if lesson_tip and countdown_value > 0.5:
+            tip_font = get_font(16)
+            draw_text(surface, lesson_tip, (cx, cy + 50), tip_font,
+                      (150, 200, 255), center=True)
 
         # Keyboard shortcut hints
         draw_text(surface, "P = Pause  |  SPACE = Star Power  |  ESC = Quit", (cx, cy + 80),

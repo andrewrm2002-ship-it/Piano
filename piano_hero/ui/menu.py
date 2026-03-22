@@ -104,6 +104,17 @@ class MainMenu:
         draw_text(surface, "Connect your keyboard and play!",
                   (cx, 210), self.subtitle_font, COLOR_GRAY, center=True)
 
+        # Daily streak display (top-right)
+        from piano_hero.game.achievements import compute_daily_streak
+        from piano_hero.game.statistics import load_stats
+        stats = load_stats()
+        streak = compute_daily_streak(stats)
+        if streak > 0:
+            streak_text = f"Day {streak}"
+            draw_text(surface, streak_text, (SCREEN_WIDTH - 80, 20),
+                      self.subtitle_font if hasattr(self, 'subtitle_font') else get_font(20),
+                      (255, 120, 0) if streak >= 7 else COLOR_ACCENT)
+
         # Buttons
         y = 300
         for i, label in enumerate(self.buttons):
@@ -237,6 +248,13 @@ class SongSelect:
             filtered.sort(key=lambda s: len(s.notes),
                           reverse=not self.sort_ascending)
 
+        # Unlock filter: hide locked songs (show with lock icon instead)
+        from piano_hero.game.song import is_song_unlocked
+        from piano_hero.game.statistics import load_stats, get_stars_earned
+        total_stars = get_stars_earned(load_stats())
+        for s in filtered:
+            s._unlocked = is_song_unlocked(s, total_stars)
+
         self.songs = filtered
         self.selected = min(self.selected, max(0, len(self.songs) - 1))
         self.scroll_offset = 0
@@ -322,7 +340,9 @@ class SongSelect:
                 self._rebuild_filtered()
         elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
             if self.songs:
-                return "play"
+                song = self.get_selected_song()
+                if song and getattr(song, '_unlocked', True):
+                    return "play"
 
         return None
 
@@ -448,8 +468,13 @@ class SongSelect:
         w = SCREEN_WIDTH - 60
         rect = pygame.Rect(x, y, w, SONG_CARD_HEIGHT)
 
+        locked = not getattr(song, '_unlocked', True)
+
         # Background
-        if selected:
+        if locked:
+            bg_color = (20, 10, 30)  # Darker
+            border_color = (40, 30, 50)
+        elif selected:
             bg_color = (40, 20, 70)
             border_color = COLOR_ACCENT
         else:
@@ -511,8 +536,14 @@ class SongSelect:
                       (x + w - 180, y + 42), self.small_font, COLOR_GRAY)
 
         # ── Mini piano-roll preview (right side of selected card) ────
-        if selected:
+        if selected and not locked:
             self._draw_mini_preview(surface, song, x + w - 155, y + 34, 90, 28)
+
+        # ── Lock overlay for locked songs ────
+        if locked:
+            lock_text = "LOCKED"
+            draw_text(surface, lock_text, (x + w // 2, y + SONG_CARD_HEIGHT // 2),
+                      self.badge_font, (100, 80, 80), center=True)
 
     def _draw_mini_preview(self, surface, song, px, py, pw, ph):
         """Draw a tiny piano-roll thumbnail for the selected song."""

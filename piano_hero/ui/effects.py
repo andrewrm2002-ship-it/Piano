@@ -458,6 +458,24 @@ class EffectsManager:
                          no_gravity=True)
             )
 
+    def spawn_celebration(self, width, height):
+        """Full-screen celebration effect for new achievements/high scores."""
+        colors = [
+            (255, 215, 0), (255, 100, 100), (100, 255, 100),
+            (100, 100, 255), (255, 100, 255), (0, 255, 255),
+            (255, 200, 50), (255, 150, 0),
+        ]
+        # Fireworks from bottom
+        for _ in range(60):
+            x = random.randint(50, width - 50)
+            y = height
+            vx = random.uniform(-80, 80)
+            vy = random.uniform(-400, -200)
+            color = random.choice(colors)
+            size = random.uniform(3, 7)
+            lifetime = random.uniform(0.8, 1.5)
+            self.particles.append(Particle(x, y, color, vx, vy, lifetime, size))
+
     def set_streak_fire(self, active):
         """Enable or disable the combo fire border (streak >= 10)."""
         self._streak_fire = active
