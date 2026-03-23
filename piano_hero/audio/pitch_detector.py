@@ -74,15 +74,23 @@ class PitchDetector:
         if rms < self.noise_floor:
             return None, 0, 0.0, 0.0, False
 
-        # Run detection with the full (low-frequency) buffer
-        freq_low, conf_low = self._yin_fft(buf_full, self.tau_max_low)
+        # Use FFT peak detection as PRIMARY detector.
+        # YIN struggles with noisy analog connections (ground loop hum
+        # confuses autocorrelation).  FFT peak detection with spectral
+        # subtraction and local-peak finding is more robust.
+        fft_result = self._fft_peak_detect(buf_full)
+        if fft_result is not None:
+            name, midi, freq, conf = fft_result
+            # Reject notes below C3 — almost always hum harmonics
+            if midi >= 48:
+                return name, midi, freq, conf, is_onset
 
-        # Run detection with the smaller (high-frequency) buffer
+        # Fallback to YIN for clean signals (e.g. MIDI input or
+        # high-quality USB audio interfaces)
+        freq_low, conf_low = self._yin_fft(buf_full, self.tau_max_low)
         buf_high = audio_buffer[:self.buffer_size_high].astype(np.float64)
         freq_high, conf_high = self._yin_fft(buf_high, self.tau_max_high)
 
-        # Pick the result: use high buffer if it found a high frequency with
-        # better or comparable confidence
         if (freq_high > HIGH_FREQ_CUTOFF and conf_high >= conf_low - 0.05):
             freq, confidence = freq_high, conf_high
         elif freq_low > 0:
@@ -93,13 +101,113 @@ class PitchDetector:
         if freq <= 0 or confidence < CONFIDENCE_THRESHOLD:
             return None, 0, 0.0, 0.0, is_onset
 
-        # Map to MIDI
         midi = freq_to_midi(freq)
-        if midi < MIN_MIDI or midi > MAX_MIDI:
+        if midi < MIN_MIDI or midi > MAX_MIDI or midi < 48:
             return None, 0, 0.0, 0.0, is_onset
 
         name = midi_to_note_name(midi)
         return name, midi, freq, confidence, is_onset
+
+    def set_noise_profile(self, noise_spectrum: np.ndarray):
+        """Set a noise spectrum profile for spectral subtraction.
+
+        Called once during calibration with the FFT magnitude of ambient noise.
+        """
+        self._noise_profile = noise_spectrum
+
+    def _fft_peak_detect(self, buf):
+        """FFT-based pitch detection for noisy analog connections.
+
+        Uses 8x zero-padded FFT for ~1.3 Hz resolution, parabolic
+        interpolation for sub-bin accuracy, and noise profile subtraction.
+        Identifies true spectral peaks (local maxima that rise above their
+        neighbours) rather than just the global maximum.
+
+        Returns (name, midi, freq, confidence) or None.
+        """
+        n = len(buf)
+        # 8x zero-padding for very fine frequency resolution
+        padded_len = n * 8
+        window = np.hanning(n)
+        padded = np.zeros(padded_len)
+        padded[:n] = buf * window
+
+        spectrum = np.abs(np.fft.rfft(padded))
+        freqs = np.fft.rfftfreq(padded_len, 1.0 / self.sample_rate)
+
+        # Noise subtraction if profile is available
+        if hasattr(self, '_noise_profile') and self._noise_profile is not None:
+            if len(self._noise_profile) != len(spectrum):
+                old_x = np.linspace(0, 1, len(self._noise_profile))
+                new_x = np.linspace(0, 1, len(spectrum))
+                noise_interp = np.interp(new_x, old_x, self._noise_profile)
+            else:
+                noise_interp = self._noise_profile
+            spectrum = np.maximum(spectrum - noise_interp * 2.0, 0)
+
+        # Search range: C4 (262 Hz) to C6 (1047 Hz) for most songs
+        # Also check down to G3 (196 Hz) for lower notes
+        mask = (freqs >= 190.0) & (freqs <= 1200.0)
+        if not np.any(mask):
+            return None
+
+        indices = np.where(mask)[0]
+        masked_spectrum = spectrum[indices]
+        masked_freqs = freqs[indices]
+
+        # Find true local peaks (not just the global max)
+        # A peak must be higher than its neighbours within ±5 bins
+        peaks = []
+        neighbourhood = 5
+        for i in range(neighbourhood, len(masked_spectrum) - neighbourhood):
+            val = masked_spectrum[i]
+            local_max = np.max(masked_spectrum[max(0, i-neighbourhood):i])
+            local_max2 = np.max(masked_spectrum[i+1:i+neighbourhood+1])
+            if val > local_max and val > local_max2 and val > 0.02:
+                # Parabolic interpolation
+                gi = indices[i]
+                pf = freqs[gi]
+                if 1 <= gi < len(spectrum) - 1:
+                    a = spectrum[gi - 1]
+                    b = spectrum[gi]
+                    c = spectrum[gi + 1]
+                    denom = a - 2.0 * b + c
+                    if abs(denom) > 1e-10:
+                        p = 0.5 * (a - c) / denom
+                        pf = freqs[gi] + p * (freqs[1] - freqs[0])
+                peaks.append((pf, val))
+
+        if not peaks:
+            return None
+
+        # Sort by magnitude
+        peaks.sort(key=lambda x: -x[1])
+
+        # The strongest peak is our candidate
+        peak_freq, peak_mag = peaks[0]
+
+        # Check if this is a harmonic of a lower fundamental
+        # If freq/2 also has a peak, prefer the lower one
+        half = peak_freq / 2.0
+        if half >= 130.0:
+            for pf, pm in peaks:
+                if abs(pf - half) < 10.0 and pm > peak_mag * 0.15:
+                    peak_freq = pf
+                    peak_mag = pm
+                    break
+
+        # Require peak above noise floor
+        median_mag = np.median(masked_spectrum)
+        if peak_mag < median_mag * 2.0:
+            return None
+
+        midi = freq_to_midi(peak_freq)
+        if midi < MIN_MIDI or midi > MAX_MIDI:
+            return None
+
+        confidence = min(peak_mag / (median_mag * 3.0 + 0.001), 0.95)
+        name = midi_to_note_name(midi)
+        return name, midi, peak_freq, confidence
 
     def detect_polyphonic(self, audio_buffer: np.ndarray, max_notes: int = 4):
         """Detect multiple simultaneous pitches using FFT peak analysis.

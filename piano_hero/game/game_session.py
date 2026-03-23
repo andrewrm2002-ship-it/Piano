@@ -247,6 +247,18 @@ class GameSession:
             self.playing = False
 
     def _process_pitch_queue(self):
+        # ── Strict majority-vote pitch detection ──
+        # Only emit a note when it has overwhelming consensus across many
+        # detection frames.  This eliminates hum harmonics and transient
+        # wrong-note blips from noisy analog connections.
+        if not hasattr(self, '_vote_buffer'):
+            self._vote_buffer = []         # list of (midi, confidence, timestamp)
+            self._vote_window = 0.25       # 250ms vote collection window
+            self._last_emit_midi = -1
+            self._last_emit_time = -999.0
+            self._emit_cooldown = 0.35     # 350ms between accepted notes
+            self._silence_count = 0
+
         while True:
             try:
                 result = self.pitch_queue.get_nowait()
@@ -258,22 +270,90 @@ class GameSession:
                 break
 
             if name is None or midi == 0:
-                self.current_detected_note = None
+                self._silence_count += 1
+                # After several silent frames, clear the vote buffer
+                # (the player released the key)
+                if self._silence_count > 5:
+                    self._vote_buffer.clear()
+                    self.current_detected_note = None
                 continue
 
+            self._silence_count = 0
+
+            # Filter out notes below C3 (MIDI 48) — always hum noise
+            if midi < 48:
+                continue
+
+            now = timestamp if timestamp else self.current_time
             self.current_detected_note = (name, midi)
-            self.current_detected_time = self.current_time
-            self.note_just_detected = True
 
-            self.recording.append({
-                "name": name, "midi": midi, "freq": freq,
-                "confidence": confidence, "time": self.current_time,
-            })
+            # Add to vote buffer
+            self._vote_buffer.append((midi, confidence, now))
 
-            detect_time = ((timestamp - self.start_time)
-                           - self.countdown + self.calibration_offset)
+        # Process vote buffer
+        if not self._vote_buffer:
+            return
 
-            self._try_match(midi, detect_time, name)
+        now = self._vote_buffer[-1][2]
+
+        # Prune old votes outside the window
+        cutoff = now - self._vote_window
+        self._vote_buffer = [(m, c, t) for m, c, t in self._vote_buffer if t >= cutoff]
+
+        # Need at least 5 votes (about 120ms of consistent detection)
+        if len(self._vote_buffer) < 5:
+            return
+
+        # Count votes by MIDI note
+        from collections import Counter
+        vote_counts = Counter()
+        vote_conf = {}
+        for midi, conf, t in self._vote_buffer:
+            vote_counts[midi] += 1
+            if midi not in vote_conf or conf > vote_conf[midi]:
+                vote_conf[midi] = conf
+
+        # Find the winner
+        winner_midi, winner_count = vote_counts.most_common(1)[0]
+        total_votes = sum(vote_counts.values())
+
+        # Winner must have at least 50% of votes (strict majority)
+        if winner_count < total_votes * 0.5:
+            return
+
+        # Debounce: don't re-emit the same note within cooldown
+        if winner_midi == self._last_emit_midi:
+            if now - self._last_emit_time < self._emit_cooldown:
+                return
+
+        # Also debounce ANY note within a shorter window to prevent
+        # rapid-fire emissions from sustained notes
+        if now - self._last_emit_time < 0.2:
+            return
+
+        # Accept this note!
+        self._last_emit_midi = winner_midi
+        self._last_emit_time = now
+        self._vote_buffer.clear()  # Reset buffer after accepting
+
+        name = None
+        for m, c, t in [(winner_midi, vote_conf[winner_midi], now)]:
+            from piano_hero.constants import midi_to_note_name
+            name = midi_to_note_name(m)
+
+        self.current_detected_note = (name, winner_midi)
+        self.current_detected_time = self.current_time
+        self.note_just_detected = True
+
+        self.recording.append({
+            "name": name, "midi": winner_midi, "freq": 0.0,
+            "confidence": vote_conf[winner_midi], "time": self.current_time,
+        })
+
+        detect_time = ((now - self.start_time)
+                       - self.countdown + self.calibration_offset)
+
+        self._try_match(winner_midi, detect_time, name)
 
     def _try_match(self, detected_midi: int, detect_time: float,
                    detected_name: str = ""):
@@ -290,7 +370,9 @@ class GameSession:
             ok_win = self._ok_window_for_note(i)
             if abs(diff) > ok_win:
                 continue
-            if note.midi != detected_midi:
+            # Allow +/- 1 semitone tolerance for audio input (analog
+            # connections have imprecise pitch detection due to noise).
+            if abs(note.midi - detected_midi) > 1:
                 continue
             if abs(diff) < abs(best_diff):
                 best_diff = diff
@@ -331,14 +413,24 @@ class GameSession:
                     expected_duration=expected_hold,
                     base_points=compute_timing_score(best_diff))
         else:
-            # Wrong note — apply penalty
+            # Possible wrong note — but first check if it's close to any
+            # upcoming note (within ±2 semitones).  Noisy analog connections
+            # frequently detect notes 1-2 semitones off.  Don't penalize
+            # the player for hardware limitations.
             nearest_note = self._find_nearest_upcoming(detect_time)
             if nearest_note is not None:
+                semitone_diff = abs(nearest_note.midi - detected_midi)
+                if semitone_diff <= 2:
+                    # Close enough — likely the right note with detection error.
+                    # Don't count as wrong, just ignore silently.
+                    return
+
                 expected_midi = nearest_note.midi
                 expected_name = nearest_note.note_name
             else:
-                expected_midi = 0
-                expected_name = ""
+                # No upcoming note at all — might be playing during rest.
+                # Don't penalize heavily.
+                return
 
             penalty = self.score_tracker.record_wrong_note_penalty(
                 expected_midi, detected_midi)

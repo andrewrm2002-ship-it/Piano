@@ -170,7 +170,9 @@ class App:
         if self.audio_engine is not None:
             self.audio_engine.stop()
         device = self.settings.get('audio_device')
-        self.audio_engine = AudioEngine(self.pitch_queue, device_index=device)
+        gain = self.settings.get('input_gain', 3.0)
+        self.audio_engine = AudioEngine(self.pitch_queue, device_index=device,
+                                         input_gain=gain)
         try:
             self.audio_engine.start()
         except RuntimeError as e:
@@ -475,42 +477,10 @@ class App:
             while self._last_hold_count < len(holds):
                 self._last_hold_count += 1
 
-            # Check for Yamaha keyboard game controls
-            if self.game_session.note_just_detected and self.game_session.current_detected_note:
-                from piano_hero.input.keyboard_input import KeyboardNoteInput
-                detected_midi = self.game_session.current_detected_note[1]
-                yamaha_action = KeyboardNoteInput.get_yamaha_action(detected_midi)
-                if yamaha_action == 'restart':
-                    song = self.game_session.song
-                    self._start_game(song, self._practice_speed)
-                    return
-                elif yamaha_action == 'pause':
-                    self.game_session.toggle_pause()
-                elif yamaha_action == 'star_power':
-                    self.game_session.activate_star_power()
-                elif yamaha_action == 'back_to_menu':
-                    self.game_session = None
-                    self.state = STATE_SONG_SELECT
-                    return
-                elif yamaha_action == 'next_song':
-                    # Find next song in list
-                    if self.song_select and self.song_select.songs:
-                        idx = self.song_select.selected
-                        if idx < len(self.song_select.songs) - 1:
-                            self.song_select.selected = idx + 1
-                            next_song = self.song_select.get_selected_song()
-                            if next_song:
-                                self._start_game(next_song, self._practice_speed)
-                                return
-                elif yamaha_action == 'prev_song':
-                    if self.song_select and self.song_select.songs:
-                        idx = self.song_select.selected
-                        if idx > 0:
-                            self.song_select.selected = idx - 1
-                            prev_song = self.song_select.get_selected_song()
-                            if prev_song:
-                                self._start_game(prev_song, self._practice_speed)
-                                return
+            # Yamaha keyboard game controls — DISABLED for audio input.
+            # Ground-loop hum causes false note detections in the C2-B2 range
+            # which triggers pause/restart/etc.  Controls only work via MIDI
+            # input (checked below) or computer keyboard shortcuts.
 
             # Also check MIDI input for Yamaha control actions
             if self.midi_input and self.midi_input.is_running():
@@ -649,7 +619,8 @@ class App:
                 ghost_notes = self.ghost_playback.get_visible_notes(self.game_session.current_time)
                 for gn in ghost_notes:
                     if gn.midi in self.highway.column_map:
-                        ghost_y = self.highway.get_note_y(gn.expected_time, self.game_session.current_time)
+                        time_until = gn.expected_time - self.game_session.current_time
+                        ghost_y = self.highway.hit_line_y - int(time_until * self.highway.pixels_per_second)
                         ghost_x = self.highway.column_map[gn.midi]
                         if 0 <= ghost_y <= self.highway.hit_line_y + 50:
                             ghost_surf = pygame.Surface((self.highway.column_width, 8), pygame.SRCALPHA)

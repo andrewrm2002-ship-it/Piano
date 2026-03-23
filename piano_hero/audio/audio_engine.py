@@ -26,6 +26,52 @@ from piano_hero.audio.pitch_detector import PitchDetector
 # Duration in seconds to measure ambient noise on startup
 _NOISE_FLOOR_DURATION = 0.5
 
+# Default input gain — set to 1.0; the FFT peak detector handles
+# weak signals internally via noise profile subtraction.
+_DEFAULT_INPUT_GAIN = 1.0
+
+# Bandpass filter: very gentle, just removes DC/sub-bass and extreme HF.
+# We keep the hum in the signal and let the noise-profile FFT detector
+# subtract it spectrally (more precise than a broad filter).
+_BP_LOW_HZ = 200.0
+_BP_HIGH_HZ = 3000.0
+
+
+def _build_bandpass_sos(low_hz: float, high_hz: float, sr: float):
+    """Build a 3rd-order Butterworth bandpass filter (SOS form).
+
+    Returns second-order sections for use with scipy-style sosfilt, or
+    a manual cascade if scipy is not available.
+    """
+    try:
+        from scipy.signal import butter
+        return butter(3, [low_hz, high_hz], btype='band', fs=sr, output='sos')
+    except ImportError:
+        # Fallback: simple first-order high-pass only
+        return None
+
+
+def _sosfilt_online(sos, x, state):
+    """Apply SOS filter to a block of samples, maintaining state across calls.
+
+    Returns (filtered_output, new_state).
+    """
+    try:
+        from scipy.signal import sosfilt
+        y, state = sosfilt(sos, x, zi=state)
+        return y.astype(np.float32), state
+    except ImportError:
+        return x, state
+
+
+def _sosfilt_init(sos):
+    """Create initial filter state (zeros)."""
+    try:
+        from scipy.signal import sosfilt_zi
+        return sosfilt_zi(sos) * 0.0  # Start from silence
+    except ImportError:
+        return None
+
 
 class AudioEngine:
     """Manages audio input stream and real-time pitch detection.
@@ -37,14 +83,16 @@ class AudioEngine:
     is from time.perf_counter().
     """
 
-    def __init__(self, pitch_queue: queue.Queue, device_index=None):
+    def __init__(self, pitch_queue: queue.Queue, device_index=None, input_gain=None):
         """
         Args:
             pitch_queue: Thread-safe queue for detection results (6-element tuples).
             device_index: Audio input device index, or None for default.
+            input_gain: Software gain multiplier for input signal (default 3.0).
         """
         self.pitch_queue = pitch_queue
         self.device_index = device_index
+        self.input_gain = input_gain if input_gain is not None else _DEFAULT_INPUT_GAIN
         self.sample_rate = SAMPLE_RATE
         self.stream = None
         self.detector = PitchDetector(SAMPLE_RATE, BUFFER_SIZE)
@@ -56,6 +104,10 @@ class AudioEngine:
         self._lock = threading.Lock()
         self._detect_event = threading.Event()
         self._detect_thread = None
+
+        # Bandpass filter state (removes ground loop hum + HF noise)
+        self._bp_sos = _build_bandpass_sos(_BP_LOW_HZ, _BP_HIGH_HZ, SAMPLE_RATE)
+        self._bp_state = _sosfilt_init(self._bp_sos) if self._bp_sos is not None else None
 
         # Level tracking
         self._latest_rms = 0.0
@@ -93,6 +145,10 @@ class AudioEngine:
             return
 
         self._running = True
+
+        # Auto-detect the input device with the strongest signal
+        if self.device_index is not None:
+            self._auto_detect_device()
 
         # Measure noise floor before starting detection
         self._measure_noise_floor()
@@ -159,6 +215,46 @@ class AudioEngine:
             self._calibration_onsets = []
         return onsets
 
+    # ── Auto Device Detection ───────────────────────────────────────────────
+
+    def _auto_detect_device(self):
+        """Find the Line In device by name.
+
+        The Realtek driver exposes the same jack under multiple API backends
+        (MME, DirectSound, WASAPI, WDM-KS) with different indices. We search
+        for 'Line In' in the device name and prefer the MME backend since it
+        has been the most reliable for this hardware.
+        """
+        try:
+            devices = sd.query_devices()
+        except Exception:
+            return
+
+        # Priority order: MME Line In > any Line In > configured device
+        mme_line_in = None
+        any_line_in = None
+
+        for idx, info in enumerate(devices):
+            if info['max_input_channels'] == 0:
+                continue
+            name = info['name'].lower()
+            if 'line in' in name:
+                if any_line_in is None:
+                    any_line_in = idx
+                # MME devices don't have "WDM-KS" or "WASAPI" in hostapi
+                # MME tends to be the lowest-numbered Line In device
+                if mme_line_in is None:
+                    mme_line_in = idx
+
+        chosen = mme_line_in or any_line_in or self.device_index
+        if chosen != self.device_index:
+            try:
+                info = sd.query_devices(chosen)
+                print(f"Audio: selected '{info['name']}' [device {chosen}]")
+            except Exception:
+                pass
+        self.device_index = chosen
+
     # ── Level Meters ─────────────────────────────────────────────────────────
 
     def get_input_level(self) -> float:
@@ -172,13 +268,13 @@ class AudioEngine:
     # ── Internal: Noise Floor ────────────────────────────────────────────────
 
     def _measure_noise_floor(self):
-        """Record a short burst of ambient audio and set the noise floor.
+        """Record ambient audio to set noise floor and build noise spectrum profile.
 
-        Opens a temporary stream for _NOISE_FLOOR_DURATION seconds, measures
-        RMS, and sets the detector's noise_floor to 2x the measured value
-        (with a minimum of SILENCE_THRESHOLD).
+        Records _NOISE_FLOOR_DURATION seconds of silence, computes RMS for the
+        silence threshold, and builds an FFT noise profile for spectral
+        subtraction in the pitch detector.
         """
-        num_samples = int(self.sample_rate * _NOISE_FLOOR_DURATION)
+        num_samples = int(self.sample_rate * max(_NOISE_FLOOR_DURATION, 1.0))
         try:
             recording = sd.rec(
                 frames=num_samples,
@@ -188,12 +284,25 @@ class AudioEngine:
                 device=self.device_index,
             )
             sd.wait()
-            ambient_rms = self.detector.measure_noise_floor(recording[:, 0])
-            # Set threshold above measured noise, with a reasonable minimum
+            mono = recording[:, 0]
+
+            # RMS-based noise floor
+            ambient_rms = self.detector.measure_noise_floor(mono)
             self.noise_floor = max(SILENCE_THRESHOLD, ambient_rms * 2.0)
             self.detector.noise_floor = self.noise_floor
+
+            # Build noise spectrum profile for FFT peak detector
+            buf_size = self.detector.buffer_size
+            window = np.hanning(buf_size)
+            spectra = []
+            for i in range(0, len(mono) - buf_size, buf_size):
+                chunk = mono[i:i + buf_size].astype(np.float64)
+                spectrum = np.abs(np.fft.rfft(chunk * window))
+                spectra.append(spectrum)
+            if spectra:
+                noise_profile = np.mean(spectra, axis=0)
+                self.detector.set_noise_profile(noise_profile)
         except Exception:
-            # If measurement fails, keep default threshold
             self.noise_floor = SILENCE_THRESHOLD
             self.detector.noise_floor = SILENCE_THRESHOLD
 
@@ -205,7 +314,17 @@ class AudioEngine:
             return
 
         # indata shape: (frames, channels) — take channel 0
-        mono = indata[:, 0]
+        raw = indata[:, 0].copy()
+
+        # Apply bandpass filter to remove ground loop hum (<130Hz) and HF noise
+        if self._bp_sos is not None and self._bp_state is not None:
+            filtered, self._bp_state = _sosfilt_online(
+                self._bp_sos, raw, self._bp_state)
+        else:
+            filtered = raw
+
+        # Apply software gain and clip
+        mono = np.clip(filtered * self.input_gain, -1.0, 1.0)
         n = len(mono)
 
         buf_size = self._poly_buffer_size

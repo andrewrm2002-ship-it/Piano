@@ -93,7 +93,9 @@ for key, midi in _WHITE_HOME + _BLACK_QWERTY + _WHITE_BOTTOM + _BLACK_NUMBER:
 # ── Yamaha Keyboard Game Controls ────────────────────────────────────────────
 # Far-left keys (C2-B2, MIDI 36-47) are unused by all 65 songs.
 # Map them to game actions so players never need to leave the keyboard.
-YAMAHA_CONTROLS = {
+# Yamaha control keys — low-range controls ONLY work via MIDI input (not audio)
+# because ground-loop hum at ~60Hz triggers false detections in the C2-B2 range.
+YAMAHA_CONTROLS_MIDI_ONLY = {
     36: 'restart',       # C2  = Restart current song
     38: 'next_song',     # D2  = Next song in list
     40: 'prev_song',     # E2  = Previous song
@@ -101,7 +103,9 @@ YAMAHA_CONTROLS = {
     43: 'star_power',    # G2  = Activate Star Power
     45: 'speed_toggle',  # A2  = Cycle practice speed (50/75/100%)
     47: 'back_to_menu',  # B2  = Return to song select
-    # Far-right keys (A#5-C6, MIDI 82-84) also unused:
+}
+# High-range controls safe for both audio and MIDI input
+YAMAHA_CONTROLS = {
     82: 'wait_toggle',   # A#5 = Toggle wait mode
     83: 'names_toggle',  # B5  = Toggle note name display
     84: 'speed_toggle',  # C6  = Cycle practice speed
