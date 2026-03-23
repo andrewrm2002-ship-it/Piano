@@ -126,22 +126,66 @@ class NoteHighway:
     # ------------------------------------------------------------------
 
     def setup_for_song(self, song, tempo):
-        """Configure columns and scroll speed based on the song's notes."""
+        """Configure columns to mirror the keyboard layout exactly.
+
+        Every key from the lowest to highest octave in the song gets a
+        column, whether or not a note uses it.  White keys get full-width
+        columns; black keys get narrower columns positioned between their
+        neighbours — matching the keyboard display at the bottom of the
+        screen so notes visually line up with their keys.
+        """
         unique_midis = song.unique_notes()
         if not unique_midis:
             return
 
-        # Column layout (flat / un-perspectived)
+        # Span from lowest to highest octave used in the song
+        BLACK_KEY_INDICES = {1, 3, 6, 8, 10}
+        min_midi = (min(unique_midis) // 12) * 12
+        max_midi = ((max(unique_midis) // 12) + 1) * 12
+
+        # Count white keys in range (determines spacing)
+        white_keys = [m for m in range(min_midi, max_midi + 1)
+                      if (m % 12) not in BLACK_KEY_INDICES]
+        num_white = len(white_keys)
+        if num_white == 0:
+            return
+
+        # Match the keyboard display layout exactly
         margin = 20
         usable_width = self.highway_width - 2 * margin
-        num_cols = len(unique_midis)
-        self.column_width = min(60, max(20, usable_width // max(num_cols, 1)))
-        total_cols_width = self.column_width * num_cols
-        start_x = margin + (usable_width - total_cols_width) // 2
+        white_width = min(40, max(15, usable_width // num_white))
+        total_width = white_width * num_white
+        start_x = margin + (usable_width - total_width) // 2
 
+        # Position white keys first
         self.column_map = {}
-        for i, midi in enumerate(unique_midis):
-            self.column_map[midi] = start_x + i * self.column_width
+        wx = start_x
+        for m in range(min_midi, max_midi + 1):
+            if (m % 12) not in BLACK_KEY_INDICES:
+                self.column_map[m] = wx
+                wx += white_width
+
+        # Position black keys between their neighbours
+        black_width = int(white_width * 0.6)
+        for m in range(min_midi, max_midi + 1):
+            if (m % 12) in BLACK_KEY_INDICES:
+                lower = m - 1
+                upper = m + 1
+                if lower in self.column_map and upper in self.column_map:
+                    lx = self.column_map[lower] + white_width
+                    rx = self.column_map[upper]
+                    cx = (lx + rx) // 2
+                elif lower in self.column_map:
+                    cx = self.column_map[lower] + white_width
+                else:
+                    continue
+                self.column_map[m] = cx - black_width // 2
+
+        # Column width = white key width (black keys use narrower rendering)
+        self.column_width = white_width
+        self._black_key_width = black_width
+        # Track which MIDI notes actually appear in the song (for labels)
+        self._song_midis = set(unique_midis)
 
         # Scroll speed: pixels per second
         self.beat_duration = 60.0 / tempo
@@ -188,8 +232,22 @@ class NoteHighway:
             # Spawn animations for newly-hit notes
             self._maybe_spawn_animation(note, current_time, now_real)
 
+        # Chord grouping bars: connect notes with the same start_time
+        self._draw_chord_bars(surface, notes, current_time)
+
+        # "PRESS NOW" flash: brighten NOW zone when a note is very close
+        press_now_flash = False
+        for note in notes:
+            if note.hit:
+                continue
+            time_until = note.start_time - current_time
+            if abs(time_until) <= 0.05:
+                press_now_flash = True
+                break
+
         # NOW zone -- the thick glowing hit band
-        self._draw_now_zone(surface, now_real, star_power_active)
+        self._draw_now_zone(surface, now_real, star_power_active,
+                            flash=press_now_flash)
 
         # Column labels (note names + keyboard keys) just below the NOW zone
         self._draw_column_labels(surface)
@@ -201,7 +259,8 @@ class NoteHighway:
     # NOW zone (prominent hit line)
     # ------------------------------------------------------------------
 
-    def _draw_now_zone(self, surface, now_real, star_power_active):
+    def _draw_now_zone(self, surface, now_real, star_power_active,
+                       flash=False):
         """Draw a thick glowing band at the hit line with pulsing chevrons."""
         left_px, _, _ = self._perspective(0, self.hit_line_y)
         right_px, _, _ = self._perspective(self.highway_width, self.hit_line_y)
@@ -234,6 +293,14 @@ class NoteHighway:
             core_color = (bright_val, bright_val, min(255, bright_val + 30))
         pygame.draw.rect(surface, core_color,
                          pygame.Rect(lx, band_top, band_w, band_h))
+
+        # "PRESS NOW" flash overlay when a note is right at the hit line
+        if flash:
+            flash_pulse = 0.7 + 0.3 * math.sin(now_real * 20)
+            flash_alpha = int(140 * flash_pulse)
+            flash_surf = pygame.Surface((band_w, band_h + 10), pygame.SRCALPHA)
+            flash_surf.fill((255, 255, 100, flash_alpha))
+            surface.blit(flash_surf, (lx, band_top - 5))
 
         # Bright edge lines at top and bottom of band
         edge_color = (255, 255, 255, int(200 * pulse))
@@ -268,6 +335,88 @@ class NoteHighway:
             surface.blit(chev_surf,
                          (cx - chev_size, cy))
 
+        # "PLAY" indicator on the left side of the NOW zone
+        play_pulse = 0.6 + 0.4 * math.sin(now_real * 3)
+        play_alpha = int(180 * play_pulse)
+        play_font = self.font or get_font(14)
+        if star_power_active:
+            play_color = (*_SP_CYAN[:3], play_alpha)
+        else:
+            play_color = (255, 255, 100, play_alpha)
+        play_surf = pygame.Surface((70, 20), pygame.SRCALPHA)
+        play_text = play_font.render("\u25b6 PLAY", True,
+                                     play_color[:3])
+        play_text.set_alpha(play_alpha)
+        play_surf.blit(play_text, (0, 0))
+        surface.blit(play_surf, (lx + 4, self.hit_line_y - 10))
+
+    # ------------------------------------------------------------------
+    # Chord grouping bars
+    # ------------------------------------------------------------------
+
+    def _draw_chord_bars(self, surface, notes, current_time):
+        """Draw horizontal connecting bars between notes that share the same
+        start_time (within 0.01 beats), making chords visually obvious."""
+        if not notes or self.beat_duration <= 0:
+            return
+
+        # Group unhit, visible notes by start_time (within tolerance)
+        tolerance = 0.01 * self.beat_duration  # 0.01 beats in seconds
+        chord_groups = []
+        used = set()
+
+        for i, note_a in enumerate(notes):
+            if i in used or note_a.hit:
+                continue
+            if note_a.midi not in self.column_map:
+                continue
+            group = [note_a]
+            used.add(i)
+            for j, note_b in enumerate(notes):
+                if j in used or note_b.hit:
+                    continue
+                if note_b.midi not in self.column_map:
+                    continue
+                if abs(note_a.start_time - note_b.start_time) <= tolerance:
+                    group.append(note_b)
+                    used.add(j)
+            if len(group) >= 2:
+                chord_groups.append(group)
+
+        # Draw a gold bar connecting the leftmost and rightmost note in each chord
+        bar_color = (255, 215, 0)  # Gold
+        for group in chord_groups:
+            time_until = group[0].start_time - current_time
+            bar_y = self.hit_line_y - int(time_until * self.pixels_per_second)
+
+            # Skip if off screen
+            if bar_y < -20 or bar_y > self.highway_height + 20:
+                continue
+
+            # Find leftmost and rightmost column centers
+            xs = []
+            for note in group:
+                raw_x = self.column_map[note.midi]
+                cx_raw = raw_x + self.column_width // 2
+                px, _, sc = self._perspective(cx_raw, bar_y)
+                xs.append(int(px))
+
+            if len(xs) < 2:
+                continue
+
+            left_x = min(xs)
+            right_x = max(xs)
+
+            # Draw the connecting bar (3px thick, with alpha)
+            bar_w = right_x - left_x
+            if bar_w > 0:
+                bar_surf = pygame.Surface((bar_w, 3), pygame.SRCALPHA)
+                bar_surf.fill((*bar_color, 180))
+                surface.blit(bar_surf, (left_x, bar_y - 1))
+                # Small circles at each note position for emphasis
+                for x in xs:
+                    pygame.draw.circle(surface, bar_color, (x, bar_y), 4)
+
     # ------------------------------------------------------------------
     # Column labels
     # ------------------------------------------------------------------
@@ -283,8 +432,15 @@ class NoteHighway:
         label_y_name = self.hit_line_y + _NOW_ZONE_HALF + 6
         label_y_key = label_y_name + 16
 
+        song_midis = getattr(self, '_song_midis', set())
         for midi, raw_x in self.column_map.items():
-            cx_raw = raw_x + self.column_width // 2
+            # Only label keys that appear in the song
+            if midi not in song_midis:
+                continue
+            is_bk = (midi % 12) in (1, 3, 6, 8, 10)
+            bk_w = getattr(self, '_black_key_width', self.column_width)
+            col_w = bk_w if is_bk else self.column_width
+            cx_raw = raw_x + col_w // 2
             px, _, sc = self._perspective(cx_raw, label_y_name)
 
             # Note name (e.g. C4, D4)
@@ -388,7 +544,9 @@ class NoteHighway:
             return
 
         raw_x = self.column_map[note.midi]
-        raw_cx = raw_x + self.column_width // 2
+        is_bk_col = (note.midi % 12) in (1, 3, 6, 8, 10)
+        col_w = getattr(self, '_black_key_width', self.column_width) if is_bk_col else self.column_width
+        raw_cx = raw_x + col_w // 2
 
         # Y position: the BOTTOM of the note block aligns with the hit time
         time_until_hit = note.start_time - current_time
@@ -406,6 +564,7 @@ class NoteHighway:
 
         # -- Choose base color --
         is_star_note = getattr(note, 'star_power', False)
+        is_black_key = (note.midi % 12) in (1, 3, 6, 8, 10)
         if note.hit:
             if note.judgment == "perfect":
                 base_color = COLOR_PERFECT
@@ -420,6 +579,9 @@ class NoteHighway:
         else:
             octave = note.midi // 12 - 1
             base_color = OCTAVE_COLORS.get(octave, DEFAULT_NOTE_COLOR)
+            # Black key notes: darker shade + will draw border after strips
+            if is_black_key:
+                base_color = tuple(max(0, c - 60) for c in base_color)
 
         # Star Power note glow override
         if is_star_note and not note.hit:
@@ -454,11 +616,15 @@ class NoteHighway:
         if draw_top >= draw_bottom:
             return
 
+        # Black keys use narrower width matching the keyboard display
+        note_base_width = (getattr(self, '_black_key_width', self.column_width)
+                           if is_black_key else self.column_width) - 4
+
         strip_h = 2
         for y in range(draw_top, draw_bottom, strip_h):
             actual_h = min(strip_h, draw_bottom - y)
             px, _, sc = self._perspective(raw_cx, y)
-            w = int(self._perspective_width(self.column_width - 4, sc))
+            w = int(self._perspective_width(note_base_width, sc))
             if w < 3:
                 w = 3
             strip_left = int(px - w // 2)
@@ -480,6 +646,42 @@ class NoteHighway:
             # Draw opaque strip (no alpha -- vivid and solid)
             pygame.draw.rect(surface, strip_color,
                              pygame.Rect(strip_left, y, w, actual_h))
+
+            # Black key: draw diagonal stripe pattern over each strip
+            if is_black_key and not note.hit:
+                stripe_surf = pygame.Surface((w, actual_h), pygame.SRCALPHA)
+                for sx in range(-actual_h, w, 6):
+                    pygame.draw.line(stripe_surf, (0, 0, 0, 70),
+                                     (sx, actual_h), (sx + actual_h, 0), 1)
+                surface.blit(stripe_surf, (strip_left, y))
+
+        # -- Black key border outline --
+        if is_black_key and not note.hit and draw_top < draw_bottom:
+            for by in range(draw_top, draw_bottom, 2):
+                bpx, _, bsc = self._perspective(raw_cx, by)
+                bw = int(self._perspective_width(note_base_width, bsc))
+                if bw > 2:
+                    bleft = int(bpx - bw // 2)
+                    # Left edge
+                    pygame.draw.rect(surface, (0, 0, 0),
+                                     pygame.Rect(bleft, by, 2, 2))
+                    # Right edge
+                    pygame.draw.rect(surface, (0, 0, 0),
+                                     pygame.Rect(bleft + bw - 2, by, 2, 2))
+            # Top edge
+            tpx, _, tsc = self._perspective(raw_cx, draw_top)
+            tw = int(self._perspective_width(self.column_width - 4, tsc))
+            if tw > 2:
+                tleft = int(tpx - tw // 2)
+                pygame.draw.rect(surface, (0, 0, 0),
+                                 pygame.Rect(tleft, draw_top, tw, 2))
+            # Bottom edge
+            bpx2, _, bsc2 = self._perspective(raw_cx, draw_bottom - 1)
+            bw2 = int(self._perspective_width(self.column_width - 4, bsc2))
+            if bw2 > 2:
+                bleft2 = int(bpx2 - bw2 // 2)
+                pygame.draw.rect(surface, (0, 0, 0),
+                                 pygame.Rect(bleft2, draw_bottom - 2, bw2, 2))
 
         # -- Star Power halo (pulsing white/cyan glow around the block) --
         if is_star_note and not note.hit:

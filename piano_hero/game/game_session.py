@@ -143,6 +143,13 @@ class GameSession:
         # Hold tracking
         self._active_holds: dict[int, HoldState] = {}
 
+        # Chord detection: when a note is hit and siblings share the same
+        # start_time, open a short window for bonus chord points.
+        self._chord_window_end: float = -1.0      # current_time when window expires
+        self._chord_pending: list[int] = []        # indices of unhit chord siblings
+        self._chord_bonus_per_note: int = 50       # bonus points per chord note
+        self._chord_window_duration: float = 0.30  # 300ms chord window
+
         # Wait mode: pause song progression until next note is played
         self.wait_mode = False
         self._waiting = False  # True when waiting for player input
@@ -220,6 +227,7 @@ class GameSession:
 
         self._process_pitch_queue()
         self._check_holds()
+        self._check_chord_window()
         self._check_misses()
         self._update_star_power()
 
@@ -412,6 +420,29 @@ class GameSession:
                     start_time=self.current_time,
                     expected_duration=expected_hold,
                     base_points=compute_timing_score(best_diff))
+
+            # Chord detection: if there are other unhit notes at the same
+            # start_time (within 0.05 beats), open a chord window
+            chord_tolerance = 0.05 * self.song.beat_duration
+            siblings = []
+            for ci, cn in enumerate(self.notes):
+                if cn.hit or cn.auto_played:
+                    continue
+                if ci == best_index:
+                    continue
+                if abs(cn.start_time - best_note.start_time) <= chord_tolerance:
+                    siblings.append(ci)
+            if siblings:
+                self._chord_pending = siblings
+                self._chord_window_end = (self.current_time
+                                          + self._chord_window_duration)
+            elif self._chord_pending:
+                # We're inside a chord window — check if this hit is one of
+                # the pending chord notes
+                if best_index in self._chord_pending:
+                    self._chord_pending.remove(best_index)
+                    # Chord bonus points
+                    self.score_tracker.score += self._chord_bonus_per_note
         else:
             # Possible wrong note — but first check if it's close to any
             # upcoming note (within ±2 semitones).  Noisy analog connections
@@ -473,6 +504,29 @@ class GameSession:
 
         for idx in finished_holds:
             del self._active_holds[idx]
+
+    def _check_chord_window(self):
+        """When the chord window expires, mark any remaining pending chord
+        notes as missed."""
+        if not self._chord_pending:
+            return
+        if self.current_time < self._chord_window_end:
+            return
+        # Window expired — missed chord notes
+        for idx in self._chord_pending:
+            note = self.notes[idx]
+            if not note.hit:
+                note.hit = True
+                note.judgment = "miss"
+                self.score_tracker.record(
+                    "miss", timing_diff=0.0,
+                    expected_midi=note.midi)
+                self.judgment_events.append(JudgmentEvent(
+                    judgment="miss", early_late="", note=note,
+                    detected_midi=0, time=self.current_time))
+                self._adjust_health(-HEALTH_MISS_DRAIN)
+        self._chord_pending.clear()
+        self._chord_window_end = -1.0
 
     def _release_all_holds(self):
         """Release all active holds (called at song end)."""
