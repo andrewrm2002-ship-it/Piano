@@ -5,3 +5,23 @@ data/
 *.png
 *.jpg
 .claude/
+
+# Copyrighted song arrangements (personal use only, do not distribute)
+songs/minecraft_*.json
+songs/fortnite_*.json
+songs/frozen_*.json
+songs/home_alone_*.json
+songs/harry_potter_*.json
+songs/encanto_*.json
+songs/moana_*.json
+songs/coco_*.json
+songs/lion_king_*.json
+songs/little_mermaid_*.json
+songs/aladdin_*.json
+songs/baby_shark.json
+songs/do_re_mi.json
+songs/star_wars_*.json
+songs/pokemon_*.json
+songs/gravity_falls_*.json
+songs/stranger_things_*.json
+songs/taylor_swift_*.json
