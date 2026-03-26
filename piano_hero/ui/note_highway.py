@@ -125,7 +125,7 @@ class NoteHighway:
     # Song setup
     # ------------------------------------------------------------------
 
-    def setup_for_song(self, song, tempo):
+    def setup_for_song(self, song, tempo, speed_multiplier=1.0):
         """Configure columns to mirror the keyboard layout exactly.
 
         Every key from the lowest to highest octave in the song gets a
@@ -133,7 +133,14 @@ class NoteHighway:
         columns; black keys get narrower columns positioned between their
         neighbours — matching the keyboard display at the bottom of the
         screen so notes visually line up with their keys.
+
+        Args:
+            song: The Song object.
+            tempo: Original song tempo in BPM.
+            speed_multiplier: Playback speed (0.5 = half speed, 2.0 = double).
+                The effective tempo is tempo * speed_multiplier.
         """
+        tempo = tempo * speed_multiplier  # Effective tempo for scroll speed
         unique_midis = song.unique_notes()
         if not unique_midis:
             return
@@ -548,8 +555,12 @@ class NoteHighway:
         col_w = getattr(self, '_black_key_width', self.column_width) if is_bk_col else self.column_width
         raw_cx = raw_x + col_w // 2
 
-        # Y position: the BOTTOM of the note block aligns with the hit time
-        time_until_hit = note.start_time - current_time
+        # Y position: the BOTTOM of the note block aligns with the hit time.
+        # Subtract pipeline latency so the note visually crosses the hit line
+        # BEFORE its musical time, giving the player time to react and the
+        # audio detection pipeline time to process.
+        from piano_hero.constants import AUDIO_PIPELINE_LATENCY
+        time_until_hit = note.start_time - current_time - AUDIO_PIPELINE_LATENCY
         note_bottom_y = self.hit_line_y - int(time_until_hit * self.pixels_per_second)
 
         # Duration in pixels
@@ -981,5 +992,6 @@ class NoteHighway:
 
     def get_note_y(self, note, current_time):
         """Get the Y position of a note for effects."""
-        time_until_hit = note.start_time - current_time
+        from piano_hero.constants import AUDIO_PIPELINE_LATENCY
+        time_until_hit = note.start_time - current_time - AUDIO_PIPELINE_LATENCY
         return self.hit_line_y - int(time_until_hit * self.pixels_per_second)

@@ -141,10 +141,19 @@ def freq_to_midi(freq: float) -> int:
 MIDI_FREQUENCIES = {m: midi_to_freq(m) for m in range(MIN_MIDI, MAX_MIDI + 1)}
 
 # ── Timing ───────────────────────────────────────────────────────────────────
-PERFECT_WINDOW = 0.080
-GOOD_WINDOW = 0.150
-OK_WINDOW = 0.250
-FIRST_NOTE_GRACE = 0.500   # Extra grace period for the first note
+PERFECT_WINDOW = 0.150
+GOOD_WINDOW = 0.300
+OK_WINDOW = 0.500
+FIRST_NOTE_GRACE = 0.800   # Extra grace period for the first note
+
+# Audio detection pipeline latency (seconds).
+# Notes are visually shifted so they cross the hit line this far BEFORE
+# their musical target time, giving the detection pipeline time to process.
+# Pipeline latency compensation (seconds).
+# Calibrated value: detection arrives ~15ms late on average.
+# Visual notes are shifted by this amount so they cross the hit line
+# at the moment the player should physically press the key.
+AUDIO_PIPELINE_LATENCY = 0.0
 
 # Points per judgment (base — continuous scoring interpolates within bands)
 PERFECT_POINTS = 100

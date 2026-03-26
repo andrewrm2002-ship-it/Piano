@@ -254,18 +254,44 @@ class GameSession:
             self.finished = True
             self.playing = False
 
+    def _get_expected_midis(self):
+        """Return set of MIDI numbers for the NEXT FEW unhit notes only.
+
+        Tight window: only the next 3 unhit notes are considered expected.
+        This prevents harmonics of the current note from matching distant
+        song notes and generating false wrong-note events.
+        """
+        expected = set()
+        count = 0
+        for note in self.notes:
+            if note.hit or note.auto_played:
+                continue
+            expected.add(note.midi)
+            # Also add harmonics (detector sees these for low notes)
+            expected.add(note.midi + 12)  # 2nd harmonic (octave)
+            expected.add(note.midi + 19)  # 3rd harmonic (octave + fifth)
+            count += 1
+            if count >= 3:
+                break
+        return expected
+
     def _process_pitch_queue(self):
-        # ── Strict majority-vote pitch detection ──
-        # Only emit a note when it has overwhelming consensus across many
-        # detection frames.  This eliminates hum harmonics and transient
-        # wrong-note blips from noisy analog connections.
+        # ── Song-aware pitch detection ──
+        # Two paths for accepting notes:
+        # 1. FAST PATH: if the detected MIDI matches an upcoming expected note,
+        #    accept with just 2 confirmations (~50ms). No majority vote needed.
+        # 2. SLOW PATH: for unexpected notes, use 3-vote majority to filter noise.
+        from piano_hero.constants import midi_to_note_name, AUDIO_PIPELINE_LATENCY
+
         if not hasattr(self, '_vote_buffer'):
-            self._vote_buffer = []         # list of (midi, confidence, timestamp)
-            self._vote_window = 0.25       # 250ms vote collection window
+            self._vote_buffer = []
+            self._vote_window = 0.20
             self._last_emit_midi = -1
             self._last_emit_time = -999.0
-            self._emit_cooldown = 0.35     # 350ms between accepted notes
             self._silence_count = 0
+            self._fast_confirm = {}  # midi -> [timestamps]
+
+        expected_midis = self._get_expected_midis()
 
         while True:
             try:
@@ -279,40 +305,83 @@ class GameSession:
 
             if name is None or midi == 0:
                 self._silence_count += 1
-                # After several silent frames, clear the vote buffer
-                # (the player released the key)
                 if self._silence_count > 5:
                     self._vote_buffer.clear()
+                    self._fast_confirm.clear()
                     self.current_detected_note = None
                 continue
 
             self._silence_count = 0
 
-            # Filter out notes below C3 (MIDI 48) — always hum noise
-            if midi < 48:
+            if midi < 43:
+                continue
+
+            # Require minimum confidence to filter noise during silence
+            if confidence < 0.3:
                 continue
 
             now = timestamp if timestamp else self.current_time
             self.current_detected_note = (name, midi)
 
-            # Add to vote buffer
+            # FAST PATH: if this MIDI matches an expected song note,
+            # accept with just 2 confirmations
+            if midi in expected_midis:
+                if midi not in self._fast_confirm:
+                    self._fast_confirm[midi] = []
+                self._fast_confirm[midi].append(now)
+                # Prune old confirmations
+                self._fast_confirm[midi] = [
+                    t for t in self._fast_confirm[midi] if now - t < 0.15]
+
+                if len(self._fast_confirm[midi]) >= 2:
+                    # Debounce same note
+                    if midi == self._last_emit_midi and now - self._last_emit_time < 0.30:
+                        continue
+                    # Different note needs only 80ms gap
+                    if midi != self._last_emit_midi and now - self._last_emit_time < 0.08:
+                        continue
+
+                    # Mark if this is a different note from last match
+                    # (enables repeat-note detection in _try_match)
+                    if hasattr(self, '_last_match_midi'):
+                        if abs(midi - self._last_match_midi) > 1:
+                            self._had_different_note_since_match = True
+
+                    self._last_emit_midi = midi
+                    self._last_emit_time = now
+                    self._fast_confirm.pop(midi, None)
+                    self._vote_buffer.clear()
+
+                    note_name = midi_to_note_name(midi)
+                    self.current_detected_note = (note_name, midi)
+                    self.current_detected_time = self.current_time
+                    self.note_just_detected = True
+
+                    self.recording.append({
+                        "name": note_name, "midi": midi, "freq": 0.0,
+                        "confidence": confidence, "time": self.current_time,
+                    })
+
+                    _PL = AUDIO_PIPELINE_LATENCY
+                    detect_time = ((now - self.start_time)
+                                   - self.countdown + self.calibration_offset - _PL)
+                    self._try_match(midi, detect_time, note_name)
+                continue
+
+            # SLOW PATH: unexpected note — use vote buffer
             self._vote_buffer.append((midi, confidence, now))
 
-        # Process vote buffer
+        # Process slow-path vote buffer
         if not self._vote_buffer:
             return
 
         now = self._vote_buffer[-1][2]
-
-        # Prune old votes outside the window
         cutoff = now - self._vote_window
         self._vote_buffer = [(m, c, t) for m, c, t in self._vote_buffer if t >= cutoff]
 
-        # Need at least 5 votes (about 120ms of consistent detection)
-        if len(self._vote_buffer) < 5:
+        if len(self._vote_buffer) < 3:
             return
 
-        # Count votes by MIDI note
         from collections import Counter
         vote_counts = Counter()
         vote_conf = {}
@@ -321,34 +390,26 @@ class GameSession:
             if midi not in vote_conf or conf > vote_conf[midi]:
                 vote_conf[midi] = conf
 
-        # Find the winner
         winner_midi, winner_count = vote_counts.most_common(1)[0]
         total_votes = sum(vote_counts.values())
 
-        # Winner must have at least 50% of votes (strict majority)
-        if winner_count < total_votes * 0.5:
+        if winner_count < total_votes * 0.4:
             return
 
-        # Debounce: don't re-emit the same note within cooldown
-        if winner_midi == self._last_emit_midi:
-            if now - self._last_emit_time < self._emit_cooldown:
-                return
-
-        # Also debounce ANY note within a shorter window to prevent
-        # rapid-fire emissions from sustained notes
-        if now - self._last_emit_time < 0.2:
+        if winner_midi == self._last_emit_midi and now - self._last_emit_time < 0.30:
+            return
+        if winner_midi != self._last_emit_midi and now - self._last_emit_time < 0.05:
             return
 
-        # Accept this note!
+        if hasattr(self, '_last_match_midi'):
+            if abs(winner_midi - self._last_match_midi) > 1:
+                self._had_different_note_since_match = True
+
         self._last_emit_midi = winner_midi
         self._last_emit_time = now
-        self._vote_buffer.clear()  # Reset buffer after accepting
+        self._vote_buffer.clear()
 
-        name = None
-        for m, c, t in [(winner_midi, vote_conf[winner_midi], now)]:
-            from piano_hero.constants import midi_to_note_name
-            name = midi_to_note_name(m)
-
+        name = midi_to_note_name(winner_midi)
         self.current_detected_note = (name, winner_midi)
         self.current_detected_time = self.current_time
         self.note_just_detected = True
@@ -358,9 +419,9 @@ class GameSession:
             "confidence": vote_conf[winner_midi], "time": self.current_time,
         })
 
+        _PL = AUDIO_PIPELINE_LATENCY
         detect_time = ((now - self.start_time)
-                       - self.countdown + self.calibration_offset)
-
+                       - self.countdown + self.calibration_offset - _PL)
         self._try_match(winner_midi, detect_time, name)
 
     def _try_match(self, detected_midi: int, detect_time: float,
@@ -369,18 +430,56 @@ class GameSession:
         best_diff = float('inf')
         best_index = -1
 
+        # Also try harmonic corrections: audio detection often picks up
+        # harmonics instead of the fundamental for low notes:
+        #   2nd harmonic = octave up (+12 semitones)
+        #   3rd harmonic = octave + fifth up (+19 semitones)
+        # If detected_midi minus these offsets matches a song note, accept it.
+        midi_candidates = [detected_midi, detected_midi - 12, detected_midi - 19]
+
+        # Prevent re-matching the same MIDI too quickly (avoids the E-C-E
+        # problem where E's sustain/ring matches the second E prematurely).
+        # Require either a silence gap, a different note, or 400ms since
+        # the same MIDI was last matched.
+        if not hasattr(self, '_last_match_midi'):
+            self._last_match_midi = -1
+            self._last_match_time = -999.0
+            self._had_different_note_since_match = True
+
+        same_midi_repeat = any(
+            abs(self._last_match_midi - c) <= 1 for c in midi_candidates
+        )
+        if same_midi_repeat and not self._had_different_note_since_match:
+            if detect_time - self._last_match_time < 0.4:
+                return  # Too soon for same note without a gap
+
         for i, note in enumerate(self.notes):
             if note.hit:
                 continue
             if note.auto_played:
-                continue  # Skip auto-played notes from matching
+                continue
             diff = detect_time - note.start_time
             ok_win = self._ok_window_for_note(i)
-            if abs(diff) > ok_win:
-                continue
-            # Allow +/- 1 semitone tolerance for audio input (analog
-            # connections have imprecise pitch detection due to noise).
-            if abs(note.midi - detected_midi) > 1:
+
+            # diff < 0 means note is in the FUTURE (player is early)
+            # diff > 0 means note is in the PAST (player is late)
+            # Only allow playing slightly early (up to ok_win) but not
+            # absurdly early — clamp early detection to 300ms max to
+            # prevent the E-C-E problem where E's ring matches a
+            # future E note that shouldn't be playable yet.
+            max_early = min(ok_win, 0.30)
+            if diff < -max_early:
+                continue  # Note is too far in the future
+            if diff > ok_win:
+                continue  # Note is too far in the past
+
+            # Check if any MIDI candidate matches within ±1 semitone tolerance
+            matched = False
+            for candidate in midi_candidates:
+                if abs(note.midi - candidate) <= 1:
+                    matched = True
+                    break
+            if not matched:
                 continue
             if abs(diff) < abs(best_diff):
                 best_diff = diff
@@ -392,6 +491,18 @@ class GameSession:
             best_note.hit = True
             best_note.judgment = judgment
             best_note.early_late = early_late
+            # Use the expected MIDI for display (octave correction)
+            # so the keyboard lights up the correct key
+            self.current_detected_note = (
+                best_note.note_name, best_note.midi)
+            # Track for repeat-note prevention
+            self._last_match_midi = best_note.midi
+            self._last_match_time = detect_time
+            self._had_different_note_since_match = False
+            # Log timing for diagnostics
+            if not hasattr(self, '_timing_diffs'):
+                self._timing_diffs = []
+            self._timing_diffs.append(best_diff)
             points_earned = self.score_tracker.record(
                 judgment, early_late=early_late, timing_diff=best_diff,
                 detected_midi=detected_midi, expected_midi=best_note.midi)
@@ -444,24 +555,43 @@ class GameSession:
                     # Chord bonus points
                     self.score_tracker.score += self._chord_bonus_per_note
         else:
-            # Possible wrong note — but first check if it's close to any
-            # upcoming note (within ±2 semitones).  Noisy analog connections
-            # frequently detect notes 1-2 semitones off.  Don't penalize
-            # the player for hardware limitations.
+            # No match found. Before counting as wrong note, apply filters
+            # to avoid penalizing harmonic/octave artifacts from detection.
+
+            # 1. If the detected note is a harmonic (octave) of the last
+            #    CORRECTLY matched note, ignore it — it's just the detector
+            #    picking up overtones of what the player already played.
+            if self._last_emit_midi > 0:
+                diff_from_last = abs(detected_midi - self._last_emit_midi)
+                if diff_from_last in (0, 12, 19):  # same, octave, or octave+fifth
+                    return
+
+            # 2. If within ±2 semitones of an upcoming note, it's likely
+            #    the right note with detection error — don't penalize.
             nearest_note = self._find_nearest_upcoming(detect_time)
             if nearest_note is not None:
                 semitone_diff = abs(nearest_note.midi - detected_midi)
-                if semitone_diff <= 2:
-                    # Close enough — likely the right note with detection error.
-                    # Don't count as wrong, just ignore silently.
+                # Also check harmonic-offset matches
+                octave_diff = abs(nearest_note.midi - (detected_midi - 12))
+                third_diff = abs(nearest_note.midi - (detected_midi - 19))
+                if semitone_diff <= 2 or octave_diff <= 2 or third_diff <= 2:
                     return
 
                 expected_midi = nearest_note.midi
                 expected_name = nearest_note.note_name
             else:
-                # No upcoming note at all — might be playing during rest.
-                # Don't penalize heavily.
+                # No upcoming note — playing during rest. Don't penalize.
                 return
+
+            # 3. Rate-limit wrong notes: max 1 per second (scaled by speed).
+            #    At slow speeds, gaps are longer so noise has more time to
+            #    accumulate false detections.
+            if not hasattr(self, '_last_wrong_time'):
+                self._last_wrong_time = -999.0
+            wrong_rate_limit = 1.0 / max(self.speed_multiplier, 0.25)
+            if self.current_time - self._last_wrong_time < wrong_rate_limit:
+                return
+            self._last_wrong_time = self.current_time
 
             penalty = self.score_tracker.record_wrong_note_penalty(
                 expected_midi, detected_midi)

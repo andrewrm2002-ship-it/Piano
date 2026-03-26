@@ -171,8 +171,9 @@ class App:
             self.audio_engine.stop()
         device = self.settings.get('audio_device')
         gain = self.settings.get('input_gain', 3.0)
+        passthrough = self.settings.get('passthrough_enabled', True)
         self.audio_engine = AudioEngine(self.pitch_queue, device_index=device,
-                                         input_gain=gain)
+                                         input_gain=gain, passthrough=passthrough)
         try:
             self.audio_engine.start()
         except RuntimeError as e:
@@ -180,6 +181,8 @@ class App:
             print("Continuing without audio input.")
 
     def _cleanup(self):
+        # Save settings on exit so they persist between launches
+        save_settings(self.settings)
         if self.audio_engine:
             self.audio_engine.stop()
         if self.midi_input:
@@ -187,7 +190,54 @@ class App:
         self.previewer.stop()
         pygame.quit()
 
+    def _poll_yamaha_navigation(self):
+        """Poll the pitch queue for Yamaha keyboard navigation keys.
+
+        When NOT in gameplay, the leftmost keys act as menu controls:
+            C2  (MIDI 36) = UP        (navigate up)
+            D2  (MIDI 38) = DOWN      (navigate down)
+            C#2 (MIDI 37) = ESCAPE    (back)
+            D#2 (MIDI 39) = ENTER     (select)
+        These are injected as synthetic pygame KEYDOWN events so all
+        menu screens handle them without modification.
+        """
+        if self.state == STATE_PLAYING:
+            return  # During gameplay, the queue is handled by game_session
+
+        # Debounce: don't fire the same nav key more than once per 250ms
+        now = pygame.time.get_ticks()
+        if not hasattr(self, '_yamaha_nav_last'):
+            self._yamaha_nav_last = {}
+
+        YAMAHA_NAV = {
+            36: pygame.K_UP,      # C2  = Up
+            38: pygame.K_DOWN,    # D2  = Down
+            37: pygame.K_ESCAPE,  # C#2 = Escape/Back
+            39: pygame.K_RETURN,  # D#2 = Enter/Select
+        }
+
+        while not self.pitch_queue.empty():
+            try:
+                item = self.pitch_queue.get_nowait()
+                if item[0] is None:
+                    continue
+                midi = item[1]
+                if midi in YAMAHA_NAV:
+                    last = self._yamaha_nav_last.get(midi, 0)
+                    if now - last > 250:  # 250ms debounce
+                        self._yamaha_nav_last[midi] = now
+                        key = YAMAHA_NAV[midi]
+                        # Inject synthetic pygame KEYDOWN event
+                        evt = pygame.event.Event(pygame.KEYDOWN, key=key, mod=0,
+                                                 unicode='', scancode=0)
+                        pygame.event.post(evt)
+            except queue.Empty:
+                break
+
     def _handle_events(self):
+        # Poll Yamaha keyboard for navigation keys (menu control)
+        self._poll_yamaha_navigation()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -243,7 +293,7 @@ class App:
                 if action == "play":
                     song = self.song_select.get_selected_song()
                     if song:
-                        speed = self.song_select.get_speed() if self._practice_mode else 1.0
+                        speed = self.song_select.get_speed()
                         diff = getattr(self.song_select, 'get_difficulty', lambda: 'Hard')()
                         self._start_game(song, speed, diff)
                 elif action == "back":
@@ -395,7 +445,7 @@ class App:
         self.game_session.no_fail = self.settings.get('no_fail', True)
         self.game_session.wait_mode = self.settings.get('wait_mode', False)
 
-        self.highway.setup_for_song(game_song, game_song.tempo / speed)
+        self.highway.setup_for_song(game_song, game_song.tempo, speed_multiplier=speed)
         self.keyboard_display.setup_for_song(game_song)
         self.effects = EffectsManager()
 
@@ -419,6 +469,20 @@ class App:
     def _update(self, dt):
         if self.state == STATE_MENU:
             self.main_menu.update(dt)
+
+        elif self.state == STATE_CALIBRATE and self.calibration_screen:
+            self.calibration_screen.update(dt)
+            # Feed audio onsets to the calibration screen
+            if (self.audio_engine and self.audio_engine.is_running()
+                    and self.calibration_screen.state == "listening"):
+                while not self.pitch_queue.empty():
+                    try:
+                        item = self.pitch_queue.get_nowait()
+                        if item[0] is not None:  # A note was detected
+                            self.calibration_screen.record_onset(
+                                self.calibration_screen._anim_time)
+                    except queue.Empty:
+                        break
 
         elif self.state == STATE_PLAYING and self.game_session:
             if self.game_session.paused:
@@ -554,6 +618,15 @@ class App:
                 if active_event:
                     song_file = os.path.basename(self.game_session.song.filepath)
                     self.event_manager.record_song_play(active_event.id, song_file, tracker.stars)
+
+                # Log timing diagnostics
+                diffs = getattr(self.game_session, '_timing_diffs', [])
+                if diffs:
+                    avg_ms = sum(diffs) / len(diffs) * 1000
+                    print(f"Timing: avg={avg_ms:+.0f}ms "
+                          f"(negative=early, positive=late) "
+                          f"across {len(diffs)} notes. "
+                          f"Suggested latency adjustment: {-avg_ms:+.0f}ms")
 
                 from piano_hero.ui.menu import ResultsScreen
                 self.results_screen = ResultsScreen(

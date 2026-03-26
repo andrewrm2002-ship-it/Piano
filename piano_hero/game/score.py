@@ -207,9 +207,15 @@ class ScoreTracker:
 
     @property
     def percentage(self) -> float:
-        if self.max_possible <= 0:
+        """Accuracy based on hit rate (notes hit / total notes).
+
+        This gives a fair score regardless of timing precision — hitting
+        32/35 notes = 91% even if timing is only 'OK' on every note.
+        The points-based score and stars still reward timing precision.
+        """
+        if self.total_notes <= 0:
             return 0.0
-        return self.score / self.max_possible
+        return self.notes_hit / self.total_notes
 
     @property
     def notes_hit(self) -> int:

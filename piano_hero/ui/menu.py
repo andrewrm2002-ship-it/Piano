@@ -203,9 +203,9 @@ class SongSelect:
         self.difficulty_options = ['Easy', 'Medium', 'Hard']
         self.difficulty_index = 1  # default Medium
 
-        # Practice speed
-        self._speed_options = [50, 75, 100]
-        self._speed_index = 2
+        # Speed (always available, not just practice mode)
+        self._speed_options = [25, 50, 75, 100, 125, 150]
+        self._speed_index = 3  # default 100%
 
         # Lazy fonts
         self.title_font = None
@@ -346,13 +346,13 @@ class SongSelect:
                 self.selected = min(len(self.songs) - 1, self.selected + 1)
                 self._ensure_visible()
         elif event.key == pygame.K_LEFT:
-            if self.practice_mode and (pygame.key.get_mods() & pygame.KMOD_SHIFT):
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                 self._speed_index = max(0, self._speed_index - 1)
             else:
                 self.category_index = (self.category_index - 1) % len(self.categories)
                 self._rebuild_filtered()
         elif event.key == pygame.K_RIGHT:
-            if self.practice_mode and (pygame.key.get_mods() & pygame.KMOD_SHIFT):
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                 self._speed_index = min(len(self._speed_options) - 1, self._speed_index + 1)
             else:
                 self.category_index = (self.category_index + 1) % len(self.categories)
@@ -462,24 +462,28 @@ class SongSelect:
         surface.set_clip(old_clip)
 
         # ── Footer ───────────────────────────────────────────────────
-        footer_y = SCREEN_HEIGHT - 55
+        footer_y = SCREEN_HEIGHT - 72
 
-        # Difficulty selector
+        # Difficulty + Speed on same line
         diff_label = self.difficulty_options[self.difficulty_index]
-        diff_text = f"Difficulty: < {diff_label} >  (SHIFT+UP/DOWN)"
-        draw_text(surface, diff_text, (cx, footer_y), self.small_font,
+        speed = self._speed_options[self._speed_index]
+        speed_color = COLOR_ACCENT if speed == 100 else (255, 200, 50) if speed < 100 else (255, 100, 100)
+        settings_text = f"Difficulty: < {diff_label} > (SHIFT+UP/DOWN)    Speed: < {speed}% > (SHIFT+LEFT/RIGHT)"
+        draw_text(surface, settings_text, (cx, footer_y), self.small_font,
                   COLOR_ACCENT, center=True)
         footer_y += 18
 
-        if self.practice_mode:
-            speed = self._speed_options[self._speed_index]
-            speed_text = f"Speed: SHIFT+LEFT/RIGHT  [ {speed}% ]"
-            draw_text(surface, speed_text, (cx, footer_y), self.small_font,
-                      COLOR_ACCENT, center=True)
-            footer_y += 18
+        # Speed bar visualization
+        bar_w = 200
+        bar_x = cx - bar_w // 2
+        bar_h = 6
+        pygame.draw.rect(surface, (40, 20, 60), (bar_x, footer_y, bar_w, bar_h), border_radius=3)
+        fill_w = int(bar_w * speed / 150)
+        pygame.draw.rect(surface, speed_color, (bar_x, footer_y, fill_w, bar_h), border_radius=3)
+        footer_y += 14
 
         count = len(self.songs)
-        draw_text(surface, f"{count} songs | / Search | TAB Sort | SHIFT+TAB Reverse | LEFT/RIGHT Category | ENTER Play",
+        draw_text(surface, f"{count} songs | / Search | TAB Sort | LEFT/RIGHT Category | ENTER Play",
                   (cx, footer_y), self.small_font, COLOR_DARK_GRAY, center=True)
 
     def _draw_song_card(self, surface, song, index, x, y, selected):
@@ -1156,6 +1160,10 @@ class CalibrationScreen:
         self._computed_offset = sum(offsets) / len(offsets)
 
     @property
+    def computed_offset(self):
+        return self._computed_offset
+
+    @property
     def computed_offset_ms(self):
         return self._computed_offset * 1000.0
 
@@ -1460,13 +1468,14 @@ class CurriculumScreen:
                 pygame.draw.rect(surface, border, card_rect, 2, border_radius=8)
 
                 # Unit number + title
-                draw_text(surface, f"Unit {unit_num}: {u['title']}", (70, y + 10),
+                draw_text(surface, f"Unit {unit_num}: {u.get('name', u.get('title', ''))}", (70, y + 10),
                           self.font, color)
 
                 # Progress
                 unit_progress = self.cm.get_unit_progress(unit_num)
-                completed = int(unit_progress * u['total_lessons'])
-                draw_text(surface, f"{completed}/{u['total_lessons']} lessons",
+                total = u.get('lesson_count', u.get('total_lessons', 5))
+                completed = int(unit_progress * total)
+                draw_text(surface, f"{completed}/{total} lessons",
                           (SCREEN_WIDTH - 150, y + 15), self.detail_font, COLOR_GRAY)
 
                 # Mini progress bar

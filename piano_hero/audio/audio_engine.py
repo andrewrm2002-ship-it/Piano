@@ -30,11 +30,12 @@ _NOISE_FLOOR_DURATION = 0.5
 # weak signals internally via noise profile subtraction.
 _DEFAULT_INPUT_GAIN = 1.0
 
-# Bandpass filter: very gentle, just removes DC/sub-bass and extreme HF.
-# We keep the hum in the signal and let the noise-profile FFT detector
-# subtract it spectrally (more precise than a broad filter).
-_BP_LOW_HZ = 200.0
-_BP_HIGH_HZ = 3000.0
+# Bandpass filter: removes DC/sub-bass below 60 Hz and extreme HF.
+# Low cutoff at 60 Hz allows notes down to C2 (65 Hz) through.
+# Hum at 60 Hz and harmonics is handled by noise profile subtraction
+# in the pitch detector, not by this filter.
+_BP_LOW_HZ = 55.0
+_BP_HIGH_HZ = 4000.0
 
 
 def _build_bandpass_sos(low_hz: float, high_hz: float, sr: float):
@@ -83,12 +84,14 @@ class AudioEngine:
     is from time.perf_counter().
     """
 
-    def __init__(self, pitch_queue: queue.Queue, device_index=None, input_gain=None):
+    def __init__(self, pitch_queue: queue.Queue, device_index=None, input_gain=None,
+                 passthrough=False):
         """
         Args:
             pitch_queue: Thread-safe queue for detection results (6-element tuples).
             device_index: Audio input device index, or None for default.
             input_gain: Software gain multiplier for input signal (default 3.0).
+            passthrough: If True, route audio input directly to the computer speakers.
         """
         self.pitch_queue = pitch_queue
         self.device_index = device_index
@@ -97,6 +100,9 @@ class AudioEngine:
         self.stream = None
         self.detector = PitchDetector(SAMPLE_RATE, BUFFER_SIZE)
         self._running = False
+        self._passthrough = passthrough
+        self._output_stream = None
+        self._output_device = None
         # Ring buffer large enough for polyphonic detection (4096 samples)
         self._poly_buffer_size = max(BUFFER_SIZE, 4096)
         self._ring_buffer = np.zeros(self._poly_buffer_size, dtype=np.float32)
@@ -146,9 +152,8 @@ class AudioEngine:
 
         self._running = True
 
-        # Auto-detect the input device with the strongest signal
-        if self.device_index is not None:
-            self._auto_detect_device()
+        # Auto-detect the best input device (USB adapter > Line In > default)
+        self._auto_detect_device()
 
         # Measure noise floor before starting detection
         self._measure_noise_floor()
@@ -157,6 +162,10 @@ class AudioEngine:
         self._detect_thread = threading.Thread(target=self._detector_loop,
                                                 daemon=True)
         self._detect_thread.start()
+
+        # Open passthrough output to computer speakers (not the USB adapter)
+        if self._passthrough:
+            self._setup_passthrough_output()
 
         try:
             self.stream = sd.InputStream(
@@ -173,10 +182,56 @@ class AudioEngine:
             self._detect_event.set()  # Unblock detector thread so it can exit
             raise RuntimeError(f"Failed to open audio stream: {e}") from e
 
+    def _setup_passthrough_output(self):
+        """Open output streams to ALL available speakers (monitor, Realtek, etc).
+
+        Skips the USB audio adapter (that's the input device) to avoid feedback.
+        """
+        self._output_streams = []
+        try:
+            devices = sd.query_devices()
+            for idx, info in enumerate(devices):
+                if info['max_output_channels'] == 0:
+                    continue
+                name = info['name'].lower()
+                # Skip USB audio adapter (input device) and Bluetooth
+                if 'usb' in name:
+                    continue
+                if 'bthhfenum' in name or 'hands-free' in name:
+                    continue
+                # Skip duplicate backends — only use MME (lowest index per device)
+                try:
+                    stream = sd.OutputStream(
+                        samplerate=self.sample_rate,
+                        blocksize=HOP_SIZE,
+                        device=idx,
+                        channels=min(info['max_output_channels'], CHANNELS),
+                        dtype='float32',
+                    )
+                    stream.start()
+                    self._output_streams.append((idx, stream))
+                    print(f"Audio passthrough: opened '{info['name']}' [device {idx}]")
+                except Exception:
+                    pass
+            # Keep the legacy attribute for the stop() method
+            self._output_stream = self._output_streams[0][1] if self._output_streams else None
+        except Exception as e:
+            print(f"Audio passthrough failed: {e}")
+            self._output_streams = []
+            self._output_stream = None
+
     def stop(self):
         """Stop and close the audio stream."""
         self._running = False
         self._detect_event.set()  # Unblock detector thread
+        for _, out_stream in getattr(self, '_output_streams', []):
+            try:
+                out_stream.stop()
+                out_stream.close()
+            except Exception:
+                pass
+        self._output_streams = []
+        self._output_stream = None
         if self.stream is not None:
             try:
                 self.stream.stop()
@@ -218,19 +273,18 @@ class AudioEngine:
     # ── Auto Device Detection ───────────────────────────────────────────────
 
     def _auto_detect_device(self):
-        """Find the Line In device by name.
+        """Find the best audio input device.
 
-        The Realtek driver exposes the same jack under multiple API backends
-        (MME, DirectSound, WASAPI, WDM-KS) with different indices. We search
-        for 'Line In' in the device name and prefer the MME backend since it
-        has been the most reliable for this hardware.
+        Priority: USB Audio Device (external adapter) > Line In > configured.
+        USB adapters have proper gain staging and are preferred over the
+        motherboard's Realtek Line In which has signal level issues.
         """
         try:
             devices = sd.query_devices()
         except Exception:
             return
 
-        # Priority order: MME Line In > any Line In > configured device
+        usb_mme = None
         mme_line_in = None
         any_line_in = None
 
@@ -238,22 +292,26 @@ class AudioEngine:
             if info['max_input_channels'] == 0:
                 continue
             name = info['name'].lower()
-            if 'line in' in name:
+            # USB audio adapters show up as "Microphone (USB Audio Device)"
+            if 'usb' in name and ('microphone' in name or 'mic' in name):
+                if usb_mme is None:
+                    usb_mme = idx
+            elif 'line in' in name:
                 if any_line_in is None:
                     any_line_in = idx
-                # MME devices don't have "WDM-KS" or "WASAPI" in hostapi
-                # MME tends to be the lowest-numbered Line In device
                 if mme_line_in is None:
                     mme_line_in = idx
 
-        chosen = mme_line_in or any_line_in or self.device_index
-        if chosen != self.device_index:
+        # Priority: USB > MME Line In > any Line In > configured device
+        chosen = usb_mme or mme_line_in or any_line_in or self.device_index
+        if chosen is not None and chosen != self.device_index:
             try:
                 info = sd.query_devices(chosen)
                 print(f"Audio: selected '{info['name']}' [device {chosen}]")
             except Exception:
                 pass
-        self.device_index = chosen
+        if chosen is not None:
+            self.device_index = chosen
 
     # ── Level Meters ─────────────────────────────────────────────────────────
 
@@ -315,6 +373,21 @@ class AudioEngine:
 
         # indata shape: (frames, channels) — take channel 0
         raw = indata[:, 0].copy()
+
+        # Audio passthrough: send raw input directly to all speaker outputs
+        if hasattr(self, '_output_streams') and self._output_streams:
+            audio_out = indata.copy()
+            for _, out_stream in self._output_streams:
+                try:
+                    # Match channel count
+                    if out_stream.channels == 1 and audio_out.shape[1] > 1:
+                        out_stream.write(audio_out[:, :1])
+                    elif out_stream.channels >= audio_out.shape[1]:
+                        out_stream.write(audio_out)
+                    else:
+                        out_stream.write(audio_out[:, :out_stream.channels])
+                except Exception:
+                    pass
 
         # Apply bandpass filter to remove ground loop hum (<130Hz) and HF noise
         if self._bp_sos is not None and self._bp_state is not None:
